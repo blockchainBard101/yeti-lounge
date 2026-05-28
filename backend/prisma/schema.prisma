@@ -1,0 +1,64 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  suiAddress   String    @id
+  suinsHandle  String?
+  avatarBlobId String?
+  bio          String?
+  createdAt    DateTime  @default(now())
+
+  posts        Post[]
+  comments     Comment[]
+  rsvps        Rsvp[]
+}
+
+model Post {
+  objectId      String    @id
+  authorAddress String
+  textContent   String
+  mediaBlobId   String?
+  yerrsCount    Int       @default(0)
+  createdAt     DateTime  @default(now())
+
+  author        User      @relation(fields: [authorAddress], references: [suiAddress], onDelete: Cascade)
+  comments      Comment[]
+}
+
+model Comment {
+  id            Int       @id @default(autoincrement())
+  postId        String
+  authorAddress String
+  textContent   String
+  createdAt     DateTime  @default(now())
+
+  post          Post      @relation(fields: [postId], references: [objectId], onDelete: Cascade)
+  author        User      @relation(fields: [authorAddress], references: [suiAddress], onDelete: Cascade)
+}
+
+model Event {
+  objectId    String    @id
+  title       String
+  description String
+  eventDate   DateTime
+  createdAt   DateTime  @default(now())
+
+  rsvps       Rsvp[]
+}
+
+model Rsvp {
+  id         Int      @id @default(autoincrement())
+  eventId    String
+  suiAddress String
+  ticketId   String
+  createdAt  DateTime @default(now())
+
+  event      Event    @relation(fields: [eventId], references: [objectId], onDelete: Cascade)
+  user       User     @relation(fields: [suiAddress], references: [suiAddress], onDelete: Cascade)
+}
