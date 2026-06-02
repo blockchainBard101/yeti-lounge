@@ -48,6 +48,19 @@ public struct AvatarUpdated has copy, drop {
     new_blob_id: String,
 }
 
+public struct ProfileUpdated has copy, drop {
+    profile_id: address,
+    owner: address,
+    new_avatar_blob_id: String,
+    new_bio: String,
+}
+
+public struct HandleUpdated has copy, drop {
+    profile_id: address,
+    owner: address,
+    new_handle: String,
+}
+
 // --- Constructor ---
 
 fun init(ctx: &mut TxContext) {
@@ -64,6 +77,11 @@ fun init(ctx: &mut TxContext) {
         id: object::new(ctx),
     };
     transfer::public_transfer(admin_cap, tx_context::sender(ctx));
+}
+
+#[test_only]
+public fun test_init(ctx: &mut TxContext) {
+    init(ctx)
 }
 
 // --- Entry & Public Functions ---
@@ -149,6 +167,89 @@ entry fun update_avatar_entry(
     update_avatar(profile, new_blob_id, ctx);
 }
 
+/// Update bio on-chain.
+public fun update_bio(
+    profile: &mut YetiProfile,
+    new_bio: String,
+    ctx: &mut TxContext
+) {
+    let sender = tx_context::sender(ctx);
+    assert!(profile.owner == sender, ENotOwner);
+
+    profile.bio = new_bio;
+
+    event::emit(ProfileUpdated {
+        profile_id: object::uid_to_address(&profile.id),
+        owner: sender,
+        new_avatar_blob_id: profile.avatar_blob_id,
+        new_bio,
+    });
+}
+
+entry fun update_bio_entry(
+    profile: &mut YetiProfile,
+    new_bio: String,
+    ctx: &mut TxContext
+) {
+    update_bio(profile, new_bio, ctx);
+}
+
+/// Update both avatar and bio on-chain.
+public fun update_profile(
+    profile: &mut YetiProfile,
+    new_avatar_blob_id: String,
+    new_bio: String,
+    ctx: &mut TxContext
+) {
+    let sender = tx_context::sender(ctx);
+    assert!(profile.owner == sender, ENotOwner);
+
+    profile.avatar_blob_id = new_avatar_blob_id;
+    profile.bio = new_bio;
+
+    event::emit(ProfileUpdated {
+        profile_id: object::uid_to_address(&profile.id),
+        owner: sender,
+        new_avatar_blob_id,
+        new_bio,
+    });
+}
+
+entry fun update_profile_entry(
+    profile: &mut YetiProfile,
+    new_avatar_blob_id: String,
+    new_bio: String,
+    ctx: &mut TxContext
+) {
+    update_profile(profile, new_avatar_blob_id, new_bio, ctx);
+}
+
+/// Update profile display name handle on-chain.
+public fun update_handle(
+    profile: &mut YetiProfile,
+    new_handle: String,
+    ctx: &mut TxContext
+) {
+    let sender = tx_context::sender(ctx);
+    assert!(profile.owner == sender, ENotOwner);
+
+    profile.suins_handle = new_handle;
+
+    event::emit(HandleUpdated {
+        profile_id: object::uid_to_address(&profile.id),
+        owner: sender,
+        new_handle,
+    });
+}
+
+entry fun update_handle_entry(
+    profile: &mut YetiProfile,
+    new_handle: String,
+    ctx: &mut TxContext
+) {
+    update_handle(profile, new_handle, ctx);
+}
+
 // --- Getters ---
 
 public fun owner(profile: &YetiProfile): address {
@@ -169,4 +270,8 @@ public fun bio(profile: &YetiProfile): String {
 
 public fun flurries_balance(profile: &YetiProfile): u64 {
     profile.flurries_balance
+}
+
+public(package) fun add_flurries(profile: &mut YetiProfile, amount: u64) {
+    profile.flurries_balance = profile.flurries_balance + amount;
 }

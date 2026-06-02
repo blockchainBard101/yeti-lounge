@@ -17,17 +17,21 @@ model User {
   posts        Post[]
   comments     Comment[]
   rsvps        Rsvp[]
+  questCompletions QuestCompletion[]
 }
 
 model Post {
-  objectId      String    @id
+  objectId      String    @id // Sui object ID of the post
   authorAddress String
   textContent   String
   mediaBlobId   String?
   yerrsCount    Int       @default(0)
+  upvotes       Int       @default(0)
+  downvotes     Int       @default(0)
+  likes         Int       @default(0)
   createdAt     DateTime  @default(now())
 
-  author        User      @relation(fields: [authorAddress], references: [suiAddress], onDelete: Cascade)
+  author        User      @relation(fields: [authorAddress], references: [suiAddress])
   comments      Comment[]
 }
 
@@ -60,5 +64,26 @@ model Rsvp {
   createdAt  DateTime @default(now())
 
   event      Event    @relation(fields: [eventId], references: [objectId], onDelete: Cascade)
+  user       User     @relation(fields: [suiAddress], references: [suiAddress], onDelete: Cascade)
+}
+
+model Quest {
+  objectId    String    @id
+  title       String
+  description String
+  reward      Int
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  completions QuestCompletion[]
+}
+
+model QuestCompletion {
+  id         Int      @id @default(autoincrement())
+  questId    String
+  suiAddress String
+  createdAt  DateTime @default(now())
+
+  quest      Quest    @relation(fields: [questId], references: [objectId], onDelete: Cascade)
   user       User     @relation(fields: [suiAddress], references: [suiAddress], onDelete: Cascade)
 }

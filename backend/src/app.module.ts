@@ -8,6 +8,9 @@ import { SponsorController } from './sponsor.controller';
 import { WalrusService } from './walrus.service';
 import { WalrusController } from './walrus.controller';
 import { IndexerService } from './indexer.service';
+import { FeedController } from './feed.controller';
+import { EventsController } from './events.controller';
+import { QuestsController } from './quests.controller';
 
 @Module({
   imports: [
@@ -15,7 +18,7 @@ import { IndexerService } from './indexer.service';
       isGlobal: true,
     }),
   ],
-  controllers: [AppController, SponsorController, WalrusController],
+  controllers: [AppController, SponsorController, WalrusController, FeedController, EventsController, QuestsController],
   providers: [AppService, PrismaService, SponsorService, WalrusService, IndexerService],
 })
 export class AppModule {}

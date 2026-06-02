@@ -1,11 +1,11 @@
-import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, Get, Query, BadRequestException, NotFoundException } from '@nestjs/common';
 import { SponsorService } from './sponsor.service';
 
 @Controller()
 export class SponsorController {
   constructor(private readonly sponsorService: SponsorService) {}
 
-  @Post('sponsored/execute')
+  @Post('sponsored/sponsor')
   async sponsor(
     @Body() body: { txBytes: string; senderAddress: string },
   ) {
@@ -16,6 +16,22 @@ export class SponsorController {
 
     try {
       return await this.sponsorService.sponsorTransaction(txBytes, senderAddress);
+    } catch (err) {
+      throw new BadRequestException(err.message);
+    }
+  }
+
+  @Post('sponsored/execute')
+  async execute(
+    @Body() body: { digest: string; signature: string },
+  ) {
+    const { digest, signature } = body;
+    if (!digest || !signature) {
+      throw new BadRequestException('Missing digest or signature in request body');
+    }
+
+    try {
+      return await this.sponsorService.executeTransaction(digest, signature);
     } catch (err) {
       throw new BadRequestException(err.message);
     }
@@ -39,6 +55,41 @@ export class SponsorController {
 
     try {
       return await this.sponsorService.welcomeDrip(address);
+    } catch (err) {
+      throw new BadRequestException(err.message);
+    }
+  }
+
+  /**
+   * GET /user/profile?address=0x...
+   *
+   * Returns the YetiProfile object ID for the given Sui address by querying
+   * the Sui GraphQL API. The frontend uses this to build the correct
+   * create_post_entry transaction with the user's own profile.
+   */
+  @Get('user/profile')
+  async getUserProfile(@Query('address') address: string) {
+    if (!address) {
+      throw new BadRequestException('Missing address query parameter');
+    }
+    try {
+      return await this.sponsorService.getUserProfile(address);
+    } catch (err) {
+      if (err instanceof NotFoundException) throw err;
+      throw new BadRequestException(err.message);
+    }
+  }
+
+  @Post('user/register-subname')
+  async registerSubname(
+    @Body() body: { subname: string; address: string },
+  ) {
+    const { subname, address } = body;
+    if (!subname || !address) {
+      throw new BadRequestException('Missing subname or address in request body');
+    }
+    try {
+      return await this.sponsorService.registerSubdomain(subname, address);
     } catch (err) {
       throw new BadRequestException(err.message);
     }

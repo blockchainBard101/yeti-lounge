@@ -3,6 +3,7 @@ module contracts::post;
 use std::string::String;
 use sui::clock::{Self, Clock};
 use sui::event;
+use sui::vec_set::{Self, VecSet};
 use contracts::profile::YetiProfile;
 
 // --- Structures ---
@@ -21,7 +22,12 @@ public struct MemePost has key {
     text_content: String,
     media_blob_id: String,
     yerrs_count: u64,
+    upvotes: u64,
+    downvotes: u64,
+    likes: u64,
     comments: vector<Comment>,
+    upvoters: VecSet<address>,
+    downvoters: VecSet<address>,
 }
 
 // --- Events ---
@@ -46,6 +52,24 @@ public struct PostYerrd has copy, drop {
     total_yerrs: u64,
 }
 
+public struct PostLiked has copy, drop {
+    post_id: address,
+    liker: address,
+    total_likes: u64,
+}
+
+public struct PostUpvoted has copy, drop {
+    post_id: address,
+    voter: address,
+    total_upvotes: u64,
+}
+
+public struct PostDownvoted has copy, drop {
+    post_id: address,
+    voter: address,
+    total_downvotes: u64,
+}
+
 // --- Entry & Public Functions ---
 
 /// Create a new MemePost object and return it for composability.
@@ -68,7 +92,12 @@ public fun create_post(
         text_content,
         media_blob_id,
         yerrs_count: 0,
+        upvotes: 0,
+        downvotes: 0,
+        likes: 0,
         comments: vector::empty<Comment>(),
+        upvoters: vec_set::empty<address>(),
+        downvoters: vec_set::empty<address>(),
     };
 
     // Emit creation event
@@ -114,6 +143,94 @@ entry fun yerr_post_entry(
     ctx: &mut TxContext
 ) {
     yerr_post(post, ctx);
+}
+
+/// Reaction interaction — "Like" a post.
+public fun like_post(
+    post: &mut MemePost,
+    ctx: &mut TxContext
+) {
+    let sender = tx_context::sender(ctx);
+    post.likes = post.likes + 1;
+
+    event::emit(PostLiked {
+        post_id: object::uid_to_address(&post.id),
+        liker: sender,
+        total_likes: post.likes,
+    });
+}
+
+entry fun like_post_entry(
+    post: &mut MemePost,
+    ctx: &mut TxContext
+) {
+    like_post(post, ctx);
+}
+
+/// Reaction interaction — "Upvote" a post.
+public fun upvote_post(
+    post: &mut MemePost,
+    ctx: &mut TxContext
+) {
+    let sender = tx_context::sender(ctx);
+    
+    if (vec_set::contains(&post.upvoters, &sender)) {
+        vec_set::remove(&mut post.upvoters, &sender);
+    } else {
+        if (vec_set::contains(&post.downvoters, &sender)) {
+            vec_set::remove(&mut post.downvoters, &sender);
+        };
+        vec_set::insert(&mut post.upvoters, sender);
+    };
+
+    post.upvotes = (vec_set::length(&post.upvoters) as u64);
+    post.downvotes = (vec_set::length(&post.downvoters) as u64);
+
+    event::emit(PostUpvoted {
+        post_id: object::uid_to_address(&post.id),
+        voter: sender,
+        total_upvotes: post.upvotes,
+    });
+}
+
+entry fun upvote_post_entry(
+    post: &mut MemePost,
+    ctx: &mut TxContext
+) {
+    upvote_post(post, ctx);
+}
+
+/// Reaction interaction — "Downvote" a post.
+public fun downvote_post(
+    post: &mut MemePost,
+    ctx: &mut TxContext
+) {
+    let sender = tx_context::sender(ctx);
+
+    if (vec_set::contains(&post.downvoters, &sender)) {
+        vec_set::remove(&mut post.downvoters, &sender);
+    } else {
+        if (vec_set::contains(&post.upvoters, &sender)) {
+            vec_set::remove(&mut post.upvoters, &sender);
+        };
+        vec_set::insert(&mut post.downvoters, sender);
+    };
+
+    post.upvotes = (vec_set::length(&post.upvoters) as u64);
+    post.downvotes = (vec_set::length(&post.downvoters) as u64);
+
+    event::emit(PostDownvoted {
+        post_id: object::uid_to_address(&post.id),
+        voter: sender,
+        total_downvotes: post.downvotes,
+    });
+}
+
+entry fun downvote_post_entry(
+    post: &mut MemePost,
+    ctx: &mut TxContext
+) {
+    downvote_post(post, ctx);
 }
 
 /// Add a comment to an existing MemePost.
@@ -168,6 +285,18 @@ public fun media_blob_id(post: &MemePost): String {
 
 public fun yerrs_count(post: &MemePost): u64 {
     post.yerrs_count
+}
+
+public fun upvotes(post: &MemePost): u64 {
+    post.upvotes
+}
+
+public fun downvotes(post: &MemePost): u64 {
+    post.downvotes
+}
+
+public fun likes(post: &MemePost): u64 {
+    post.likes
 }
 
 public fun comments(post: &MemePost): &vector<Comment> {
