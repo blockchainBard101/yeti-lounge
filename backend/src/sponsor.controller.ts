@@ -94,4 +94,19 @@ export class SponsorController {
       throw new BadRequestException(err.message);
     }
   }
+
+  @Get('leaderboard')
+  async getLeaderboard() {
+    return await this.sponsorService.getLeaderboard();
+  }
+
+  @Get('glacier-fund')
+  async getGlacierFund() {
+    return await this.sponsorService.getGlacierFundDonations();
+  }
+
+  @Get('dashboard-stats')
+  async getDashboardStats() {
+    return await this.sponsorService.getDashboardStats();
+  }
 }

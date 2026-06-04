@@ -3,10 +3,12 @@ module contracts::profile;
 use std::string::String;
 use sui::event;
 use sui::table::{Self, Table};
+use sui::clock::{Self, Clock};
 
 // --- Errors ---
 const EProfileAlreadyExists: u64 = 0;
 const ENotOwner: u64 = 1;
+const EDoubleCheckIn: u64 = 2;
 
 // --- Objects ---
 
@@ -25,6 +27,9 @@ public struct YetiProfile has key, store {
     avatar_blob_id: String,
     bio: String,
     flurries_balance: u64,
+    verified: bool,
+    last_check_in: u64,
+    streak_count: u64,
 }
 
 /// Capability representing admin rights (e.g. setup configurations).
@@ -59,6 +64,18 @@ public struct HandleUpdated has copy, drop {
     profile_id: address,
     owner: address,
     new_handle: String,
+}
+
+public struct ProfileVerified has copy, drop {
+    profile_id: address,
+    owner: address,
+}
+
+public struct DailyCheckInClaimed has copy, drop {
+    profile_id: address,
+    owner: address,
+    streak_count: u64,
+    reward_amount: u64,
 }
 
 // --- Constructor ---
@@ -110,6 +127,9 @@ public fun create_profile(
         avatar_blob_id,
         bio,
         flurries_balance: 100, // Initial welcome reward
+        verified: false,
+        last_check_in: 0,
+        streak_count: 0,
     };
 
     // Add mapping and increment count
@@ -274,4 +294,81 @@ public fun flurries_balance(profile: &YetiProfile): u64 {
 
 public(package) fun add_flurries(profile: &mut YetiProfile, amount: u64) {
     profile.flurries_balance = profile.flurries_balance + amount;
+}
+
+public fun verify_profile(
+    profile: &mut YetiProfile,
+    ctx: &mut TxContext
+) {
+    let sender = tx_context::sender(ctx);
+    assert!(profile.owner == sender, ENotOwner);
+    profile.verified = true;
+
+    event::emit(ProfileVerified {
+        profile_id: object::uid_to_address(&profile.id),
+        owner: sender,
+    });
+}
+
+entry fun verify_profile_entry(
+    profile: &mut YetiProfile,
+    ctx: &mut TxContext
+) {
+    verify_profile(profile, ctx);
+}
+
+public fun verified(profile: &YetiProfile): bool {
+    profile.verified
+}
+
+public fun last_check_in(profile: &YetiProfile): u64 {
+    profile.last_check_in
+}
+
+public fun streak_count(profile: &YetiProfile): u64 {
+    profile.streak_count
+}
+
+public fun claim_daily_check_in(
+    profile: &mut YetiProfile,
+    clock: &Clock,
+    ctx: &mut TxContext
+) {
+    let sender = tx_context::sender(ctx);
+    assert!(profile.owner == sender, ENotOwner);
+
+    let now_ms = clock::timestamp_ms(clock);
+    let last_check = profile.last_check_in;
+
+    if (last_check != 0) {
+        assert!(now_ms >= last_check + 86400000, EDoubleCheckIn);
+    };
+
+    if (last_check != 0 && now_ms <= last_check + 172800000) {
+        profile.streak_count = profile.streak_count + 1;
+    } else {
+        profile.streak_count = 1;
+    };
+
+    profile.last_check_in = now_ms;
+
+    let reward = 10 + (profile.streak_count * 5);
+    let final_reward = if (reward > 100) { 100 } else { reward };
+
+    profile.flurries_balance = profile.flurries_balance + final_reward;
+
+    event::emit(DailyCheckInClaimed {
+        profile_id: object::uid_to_address(&profile.id),
+        owner: sender,
+        streak_count: profile.streak_count,
+        reward_amount: final_reward,
+    });
+}
+
+entry fun claim_daily_check_in_entry(
+    profile: &mut YetiProfile,
+    clock: &Clock,
+    ctx: &mut TxContext
+) {
+    claim_daily_check_in(profile, clock, ctx);
 }

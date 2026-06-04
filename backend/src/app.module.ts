@@ -11,6 +11,8 @@ import { IndexerService } from './indexer.service';
 import { FeedController } from './feed.controller';
 import { EventsController } from './events.controller';
 import { QuestsController } from './quests.controller';
+import { AiController } from './ai.controller';
+import { SwapController } from './swap.controller';
 
 @Module({
   imports: [
@@ -18,7 +20,7 @@ import { QuestsController } from './quests.controller';
       isGlobal: true,
     }),
   ],
-  controllers: [AppController, SponsorController, WalrusController, FeedController, EventsController, QuestsController],
+  controllers: [AppController, SponsorController, WalrusController, FeedController, EventsController, QuestsController, AiController, SwapController],
   providers: [AppService, PrismaService, SponsorService, WalrusService, IndexerService],
 })
 export class AppModule {}

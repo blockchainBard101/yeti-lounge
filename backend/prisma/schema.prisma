@@ -8,15 +8,22 @@ generator client {
 }
 
 model User {
-  suiAddress   String    @id
-  suinsHandle  String?
-  avatarBlobId String?
-  bio          String?
-  createdAt    DateTime  @default(now())
+  suiAddress      String    @id
+  suinsHandle     String?
+  claimedSubdomain String?
+  avatarBlobId    String?
+  bio             String?
+  profileObjectId String?   // on-chain YetiProfile object ID (populated by indexer on ProfileCreated)
+  createdAt       DateTime  @default(now())
+  isVerified      Boolean   @default(false)
+  streakCount     Int       @default(0)
+  lastCheckIn     DateTime?
+  flurriesBalance Int       @default(100)
+  tipsReceived    BigInt    @default(0)
 
-  posts        Post[]
-  comments     Comment[]
-  rsvps        Rsvp[]
+  posts            Post[]
+  comments         Comment[]
+  rsvps            Rsvp[]
   questCompletions QuestCompletion[]
 }
 
@@ -30,6 +37,7 @@ model Post {
   downvotes     Int       @default(0)
   likes         Int       @default(0)
   createdAt     DateTime  @default(now())
+  tipsReceived  BigInt    @default(0)
 
   author        User      @relation(fields: [authorAddress], references: [suiAddress])
   comments      Comment[]
@@ -86,4 +94,18 @@ model QuestCompletion {
 
   quest      Quest    @relation(fields: [questId], references: [objectId], onDelete: Cascade)
   user       User     @relation(fields: [suiAddress], references: [suiAddress], onDelete: Cascade)
+}
+
+model GlacierFund {
+  objectId     String   @id
+  totalDonated BigInt   @default(0)
+  createdAt    DateTime @default(now())
+}
+
+/// Persists the last Sui GraphQL event cursor per module so the indexer can
+/// resume from where it left off after a server restart (no event replay).
+model IndexerCursor {
+  module    String   @id  // e.g. "profile", "post", "event", "rewards", "glacier"
+  cursor    String       // opaque cursor string returned by Sui GraphQL
+  updatedAt DateTime @updatedAt
 }

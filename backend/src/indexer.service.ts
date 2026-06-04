@@ -9,7 +9,6 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
   private graphqlClient: SuiGraphQLClient;
   private intervalId: NodeJS.Timeout | null = null;
   private packageId: string;
-  private readonly processedEvents = new Set<string>();
 
   constructor(
     private configService: ConfigService,
@@ -19,13 +18,13 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
       network: 'testnet',
       url: 'https://graphql.testnet.sui.io/graphql',
     });
-    this.packageId = this.configService.get<string>('PACKAGE_ID') || '0xee0b17b8c784f3a00fe40029e4f2992bc971acde22cf83f8799d1b9731811232';
+    this.packageId = this.configService.get<string>('PACKAGE_ID') || '0x395938a222bfd3cf39052bf6ec5b0c8db77935e71a292092dddcbcf1a9ebf2eb';
   }
 
   async onModuleInit() {
     this.logger.log('Starting Yeti Lounge event indexer...');
-    
-    // Start interval-based indexing every 10 seconds
+    // Run once immediately on start, then every 10 seconds
+    this.indexEvents().catch((err) => this.logger.error('Initial index run failed:', err));
     this.intervalId = setInterval(() => {
       this.indexEvents().catch((err) => {
         this.logger.error('Failed to run index events loop:', err);
@@ -39,26 +38,45 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** Load the persisted cursor for a module from the DB. Returns null if none stored yet. */
+  private async loadCursor(module: string): Promise<string | null> {
+    const row = await this.prismaService.indexerCursor.findUnique({ where: { module } });
+    return row?.cursor ?? null;
+  }
+
+  /** Persist the cursor for a module to the DB. */
+  private async saveCursor(module: string, cursor: string): Promise<void> {
+    await this.prismaService.indexerCursor.upsert({
+      where: { module },
+      update: { cursor },
+      create: { module, cursor },
+    });
+  }
+
   private async indexEvents() {
     if (!this.packageId || this.packageId === '0x_placeholder_package_id') {
-      // Mock indexing logs in terminal since no Move package is deployed yet
       this.logger.debug('Waiting for a deployed Move package ID to begin on-chain indexing.');
       return;
     }
 
     try {
-      this.logger.log(`Querying events for package: ${this.packageId}`);
-      
-      const modules = ['profile', 'post', 'event', 'rewards'];
-      
+      const modules = ['profile', 'post', 'event', 'rewards', 'glacier'];
+
       for (const module of modules) {
+        // Load the last saved cursor for this module from the DB.
+        // null means we haven't indexed anything yet — fetch the oldest events first.
+        const afterCursor = await this.loadCursor(module);
+
         const response = await this.graphqlClient.query({
           query: `
-            query GetEvents($filter: EventFilter!) {
-              events(filter: $filter, first: 20) {
+            query GetEvents($filter: EventFilter!, $after: String) {
+              events(filter: $filter, first: 50, after: $after) {
+                pageInfo {
+                  endCursor
+                  hasNextPage
+                }
                 nodes {
                   timestamp
-                  eventBcs
                   contents {
                     type {
                       repr
@@ -70,9 +88,8 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
             }
           `,
           variables: {
-            filter: {
-              type: `${this.packageId}::${module}`,
-            },
+            filter: { type: `${this.packageId}::${module}` },
+            after: afterCursor,
           },
         });
 
@@ -81,12 +98,14 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           continue;
         }
 
-        const nodes = (response.data as any)?.events?.nodes || [];
+        const eventPage = (response.data as any)?.events;
+        const nodes = eventPage?.nodes || [];
+        const newCursor: string | null = eventPage?.pageInfo?.endCursor ?? null;
+
+        if (nodes.length === 0) continue;
+        this.logger.log(`[${module}] Processing ${nodes.length} new event(s)`);
 
         for (const node of nodes) {
-          if (node.eventBcs && this.processedEvents.has(node.eventBcs)) {
-            continue;
-          }
 
           const type = node.contents?.type?.repr;
           if (!type) continue;
@@ -96,13 +115,13 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
 
           // Profile Events
           if (type.endsWith('::ProfileCreated')) {
-            const { owner, suins_handle, avatar_blob_id, bio } = parsedJson;
+            const { profile_id, owner, suins_handle, avatar_blob_id, bio } = parsedJson;
             await this.prismaService.user.upsert({
               where: { suiAddress: owner },
-              update: { suinsHandle: suins_handle, avatarBlobId: avatar_blob_id, bio },
-              create: { suiAddress: owner, suinsHandle: suins_handle, avatarBlobId: avatar_blob_id, bio },
+              update: { suinsHandle: suins_handle, avatarBlobId: avatar_blob_id, bio, profileObjectId: profile_id },
+              create: { suiAddress: owner, suinsHandle: suins_handle, avatarBlobId: avatar_blob_id, bio, profileObjectId: profile_id, isVerified: false, flurriesBalance: 100 },
             });
-            this.logger.log(`Indexed ProfileCreated for user: ${owner}`);
+            this.logger.log(`Indexed ProfileCreated for user: ${owner} — profileObjectId: ${profile_id}`);
           }
           else if (type.endsWith('::AvatarUpdated')) {
             const { owner, new_blob_id } = parsedJson;
@@ -128,6 +147,28 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
             });
             this.logger.log(`Indexed HandleUpdated for user: ${owner} to: ${new_handle}`);
           }
+          else if (type.endsWith('::ProfileVerified')) {
+            const { owner } = parsedJson;
+            await this.prismaService.user.update({
+              where: { suiAddress: owner },
+              data: { isVerified: true },
+            });
+            this.logger.log(`Indexed ProfileVerified for user: ${owner}`);
+          }
+          else if (type.endsWith('::DailyCheckInClaimed')) {
+            const { owner, streak_count, reward_amount } = parsedJson;
+            await this.prismaService.user.update({
+              where: { suiAddress: owner },
+              data: {
+                streakCount: Number(streak_count),
+                lastCheckIn: new Date(),
+                flurriesBalance: {
+                  increment: Number(reward_amount),
+                },
+              },
+            });
+            this.logger.log(`Indexed DailyCheckInClaimed for user: ${owner}, streak: ${streak_count}, reward: ${reward_amount}`);
+          }
 
           // Post Events
           else if (type.endsWith('::PostCreated')) {
@@ -152,6 +193,22 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
               data: { yerrsCount: Number(total_yerrs) },
             });
             this.logger.log(`Indexed PostYerrd: ${post_id}`);
+          }
+          else if (type.endsWith('::PostYerrdWithTip')) {
+            const { post_id, recipient, amount, total_yerrs } = parsedJson;
+            await this.prismaService.post.update({
+              where: { objectId: post_id },
+              data: { 
+                yerrsCount: Number(total_yerrs),
+                tipsReceived: { increment: BigInt(amount) }
+              },
+            });
+            await this.prismaService.user.upsert({
+              where: { suiAddress: recipient },
+              update: { tipsReceived: { increment: BigInt(amount) } },
+              create: { suiAddress: recipient, tipsReceived: BigInt(amount) }
+            });
+            this.logger.log(`Indexed PostYerrdWithTip: ${post_id}, amount: ${amount}`);
           }
           else if (type.endsWith('::PostLiked')) {
             const { post_id, total_likes } = parsedJson;
@@ -248,25 +305,55 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
             this.logger.log(`Indexed QuestAdded: ${quest_id}`);
           }
           else if (type.endsWith('::QuestCompleted')) {
-            const { quest_id, user } = parsedJson;
-            // Ensure user exists
+            const { quest_id, user, profile_owner, reward_amount } = parsedJson;
+            const targetUser = user || profile_owner;
+            const reward = reward_amount ? Number(reward_amount) : 0;
+            
             await this.prismaService.user.upsert({
-              where: { suiAddress: user },
-              update: {},
-              create: { suiAddress: user }
-            });
-            await this.prismaService.questCompletion.create({
-              data: {
-                questId: quest_id,
-                suiAddress: user,
+              where: { suiAddress: targetUser },
+              update: {
+                flurriesBalance: {
+                  increment: reward,
+                },
+              },
+              create: {
+                suiAddress: targetUser,
+                flurriesBalance: 100 + reward,
               }
             });
-            this.logger.log(`Indexed QuestCompleted for user: ${user}`);
+
+            if (quest_id) {
+              await this.prismaService.questCompletion.create({
+                data: {
+                  questId: quest_id,
+                  suiAddress: targetUser,
+                }
+              }).catch(() => {});
+            }
+            this.logger.log(`Indexed QuestCompleted for user: ${targetUser}, reward: ${reward}`);
+          }
+          else if (type.endsWith('::DonationReceived')) {
+            const { fund_id, amount } = parsedJson;
+            await this.prismaService.glacierFund.upsert({
+              where: { objectId: fund_id },
+              update: {
+                totalDonated: {
+                  increment: BigInt(amount),
+                },
+              },
+              create: {
+                objectId: fund_id,
+                totalDonated: BigInt(amount),
+              },
+            });
+            this.logger.log(`Indexed DonationReceived for fund: ${fund_id}, amount: ${amount}`);
           }
 
-          if (node.eventBcs) {
-            this.processedEvents.add(node.eventBcs);
-          }
+        }
+
+        // Persist the new cursor so the next run (or restart) picks up from here
+        if (newCursor) {
+          await this.saveCursor(module, newCursor);
         }
       }
     } catch (err) {

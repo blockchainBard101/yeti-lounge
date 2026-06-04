@@ -4,6 +4,7 @@ use std::string::String;
 use sui::clock::{Self, Clock};
 use sui::event;
 use sui::vec_set::{Self, VecSet};
+use sui::coin::{Self, Coin};
 use contracts::profile::YetiProfile;
 
 // --- Structures ---
@@ -28,6 +29,7 @@ public struct MemePost has key {
     comments: vector<Comment>,
     upvoters: VecSet<address>,
     downvoters: VecSet<address>,
+    likers: VecSet<address>,
 }
 
 // --- Events ---
@@ -49,6 +51,14 @@ public struct CommentAdded has copy, drop {
 public struct PostYerrd has copy, drop {
     post_id: address,
     yerrer: address,
+    total_yerrs: u64,
+}
+
+public struct PostYerrdWithTip has copy, drop {
+    post_id: address,
+    yerrer: address,
+    recipient: address,
+    amount: u64,
     total_yerrs: u64,
 }
 
@@ -98,6 +108,7 @@ public fun create_post(
         comments: vector::empty<Comment>(),
         upvoters: vec_set::empty<address>(),
         downvoters: vec_set::empty<address>(),
+        likers: vec_set::empty<address>(),
     };
 
     // Emit creation event
@@ -145,13 +156,50 @@ entry fun yerr_post_entry(
     yerr_post(post, ctx);
 }
 
+/// Reaction interaction — "YERRRR" a post with a token tip.
+public fun yerr_post_with_tip<T>(
+    post: &mut MemePost,
+    coin: Coin<T>,
+    ctx: &mut TxContext
+) {
+    let sender = tx_context::sender(ctx);
+    let amount = coin::value(&coin);
+    
+    // Transfer the coin to the post author
+    transfer::public_transfer(coin, post.author);
+    
+    post.yerrs_count = post.yerrs_count + 1;
+
+    // Emit event with amount tipped
+    event::emit(PostYerrdWithTip {
+        post_id: object::uid_to_address(&post.id),
+        yerrer: sender,
+        recipient: post.author,
+        amount,
+        total_yerrs: post.yerrs_count,
+    });
+}
+
+/// Entry point wrapping yerr_post_with_tip.
+entry fun yerr_post_with_tip_entry<T>(
+    post: &mut MemePost,
+    coin: Coin<T>,
+    ctx: &mut TxContext
+) {
+    yerr_post_with_tip(post, coin, ctx);
+}
+
 /// Reaction interaction — "Like" a post.
+const EAlreadyLiked: u64 = 1;
+
 public fun like_post(
     post: &mut MemePost,
     ctx: &mut TxContext
 ) {
     let sender = tx_context::sender(ctx);
-    post.likes = post.likes + 1;
+    assert!(!vec_set::contains(&post.likers, &sender), EAlreadyLiked);
+    vec_set::insert(&mut post.likers, sender);
+    post.likes = (vec_set::length(&post.likers) as u64);
 
     event::emit(PostLiked {
         post_id: object::uid_to_address(&post.id),

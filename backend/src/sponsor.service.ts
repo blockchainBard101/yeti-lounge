@@ -5,6 +5,8 @@ import { SuiGraphQLClient } from '@mysten/sui/graphql';
 import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { Transaction } from '@mysten/sui/transactions';
+import { PrismaService } from './prisma.service';
+import { SuinsClient, SuinsTransaction } from '@mysten/suins';
 
 /** 0.05 SUI in MIST — covers ~50 Walrus uploads at ~0.001 SUI gas each */
 const WELCOME_DRIP_MIST = 50_000_000n;
@@ -21,6 +23,7 @@ export class SponsorService {
   private suiClient: SuiGrpcClient;
   private graphqlClient: SuiGraphQLClient;
   private sponsorKeypair: Ed25519Keypair | null = null;
+  private suinsClient: SuinsClient;
 
   /**
    * In-memory set of addresses that have already received the welcome drip.
@@ -28,12 +31,20 @@ export class SponsorService {
    */
   private readonly dripRegistry = new Set<string>();
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private prismaService: PrismaService,
+  ) {
     const rpcUrl = this.configService.get<string>('SUI_RPC_URL') || 'https://fullnode.testnet.sui.io:443';
     this.suiClient = new SuiGrpcClient({ network: 'testnet', baseUrl: rpcUrl });
     this.graphqlClient = new SuiGraphQLClient({
       network: 'testnet',
       url: 'https://graphql.testnet.sui.io/graphql',
+    });
+
+    this.suinsClient = new SuinsClient({
+      client: this.suiClient as any,
+      network: 'testnet',
     });
 
     const privateKey = this.configService.get<string>('SPONSOR_WALLET_KEY');
@@ -228,14 +239,36 @@ export class SponsorService {
    * @param ownerAddress - The user's Sui address
    * @returns { profileObjectId: string }
    */
-  async getUserProfile(ownerAddress: string): Promise<{ profileObjectId: string }> {
+  async getUserProfile(ownerAddress: string): Promise<{ profileObjectId: string; dbUser: any }> {
     if (!ownerAddress?.startsWith('0x') || ownerAddress.length < 10) {
       throw new Error('Invalid Sui address');
     }
 
+    // ── 1. Fast path: query Postgres (populated by the event indexer) ──────────
+    // The indexer listens for ProfileCreated events and stores the profile_id.
+    // This is instant and avoids the GraphQL indexing lag entirely.
+    const dbUser = await this.prismaService.user.findUnique({
+      where: { suiAddress: ownerAddress },
+    });
+
+    if (dbUser?.profileObjectId) {
+      this.logger.log(`[GetUserProfile] DB hit for ${ownerAddress} → ${dbUser.profileObjectId}`);
+      const formattedDbUser = {
+        ...dbUser,
+        tipsReceived: dbUser.tipsReceived.toString(),
+      };
+      return { profileObjectId: dbUser.profileObjectId, dbUser: formattedDbUser };
+    }
+
+    // ── 2. Slow path: fall back to GraphQL for pre-existing / non-indexed users ─
+    // This handles users who created their profile before this migration,
+    // or the rare case where the indexer hasn't caught up yet.
+    // We then back-fill the DB so future calls are instant.
+    this.logger.warn(`[GetUserProfile] DB miss for ${ownerAddress} — falling back to GraphQL`);
+
     const packageId =
-      process.env.PACKAGE_ID ||
-      '0xee0b17b8c784f3a00fe40029e4f2992bc971acde22cf83f8799d1b9731811232';
+      this.configService.get<string>('PACKAGE_ID') ||
+      '0x395938a222bfd3cf39052bf6ec5b0c8db77935e71a292092dddcbcf1a9ebf2eb';
 
     try {
       const response = await this.graphqlClient.query({
@@ -267,8 +300,24 @@ export class SponsorService {
       }
 
       const profileObjectId: string = nodes[0].address;
-      this.logger.log(`[GetUserProfile] Resolved profile ${profileObjectId} for ${ownerAddress}`);
-      return { profileObjectId };
+      this.logger.log(`[GetUserProfile] GraphQL resolved ${profileObjectId} for ${ownerAddress} — back-filling DB`);
+
+      // Back-fill the DB so the next call is served from Postgres
+      await this.prismaService.user.upsert({
+        where: { suiAddress: ownerAddress },
+        update: { profileObjectId },
+        create: { suiAddress: ownerAddress, profileObjectId },
+      });
+
+      const freshDbUser = await this.prismaService.user.findUnique({
+        where: { suiAddress: ownerAddress },
+      });
+      const formattedDbUser = freshDbUser ? {
+        ...freshDbUser,
+        tipsReceived: freshDbUser.tipsReceived.toString(),
+      } : null;
+
+      return { profileObjectId, dbUser: formattedDbUser };
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
       this.logger.error(`[GetUserProfile] Failed for ${ownerAddress}:`, err);
@@ -277,35 +326,125 @@ export class SponsorService {
   }
 
   async registerSubdomain(handle: string, recipientAddress: string) {
-    const apiKey = this.configService.get<string>('ENOKI_API_KEY');
-    try {
-      const response = await fetch('https://api.enoki.mystenlabs.com/v1/subnames', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          network: 'testnet',
-          domain: 'lofilounge.sui',
-          subname: handle,
-          address: recipientAddress,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorMsg = await response.text();
-        throw new Error(`Enoki subnames API returned error: ${errorMsg}`);
+    if (!this.sponsorKeypair) {
+      this.logger.warn(`[registerSubdomain] Mocking subdomain registration for ${handle}.lofilounge.sui (no sponsor key).`);
+      try {
+        await this.prismaService.user.update({
+          where: { suiAddress: recipientAddress },
+          data: { claimedSubdomain: `${handle}@lofilounge` },
+        });
+      } catch (e) {
+        this.logger.error('Failed to update mock claimedSubdomain in DB:', e);
       }
-
-      const json = await response.json();
       return {
         success: true,
-        data: json.data,
+        data: {
+          digest: '0xmock_subdomain_' + Math.random().toString(36).substring(7),
+          subname: `${handle}.lofilounge.sui`,
+        },
+      };
+    }
+
+    try {
+      // 1. Resolve parent domain NameRecord to get the parentNftId
+      const parentRecord = await this.suinsClient.getNameRecord('lofilounge.sui');
+      if (!parentRecord || !parentRecord.nftId) {
+        throw new Error('Parent domain lofilounge.sui not found or has no NFT ID');
+      }
+
+      // 2. Build Transaction and SuinsTransaction
+      const transaction = new Transaction();
+      const suinsTransaction = new SuinsTransaction(this.suinsClient, transaction);
+
+      // 3. Create subname NFT
+      const subNameNft = suinsTransaction.createSubName({
+        parentNft: parentRecord.nftId,
+        name: `${handle}.lofilounge.sui`,
+        expirationTimestampMs: Number(parentRecord.expirationTimestampMs),
+        allowChildCreation: true,
+        allowTimeExtension: true,
+      });
+
+      // 4. Transfer the subname NFT to recipient
+      transaction.transferObjects([subNameNft], recipientAddress);
+
+      // 5. Sign and execute transaction using sponsorKeypair
+      const result = await this.suiClient.signAndExecuteTransaction({
+        transaction,
+        signer: this.sponsorKeypair,
+      });
+
+      let digest = '';
+      if ('Transaction' in result && result.Transaction?.digest) {
+        digest = result.Transaction.digest;
+      } else if ('FailedTransaction' in result && result.FailedTransaction?.digest) {
+        digest = result.FailedTransaction.digest;
+      } else if ('digest' in result) {
+        digest = (result as any).digest;
+      }
+
+      this.logger.log(`[registerSubdomain] Subname ${handle}.lofilounge.sui registered. Tx Digest: ${digest}`);
+
+      // 6. Update user in DB
+      try {
+        await this.prismaService.user.update({
+          where: { suiAddress: recipientAddress },
+          data: { claimedSubdomain: `${handle}@lofilounge` },
+        });
+      } catch (e) {
+        this.logger.error('Failed to update claimedSubdomain in DB:', e);
+      }
+
+      return {
+        success: true,
+        data: {
+          digest,
+          subname: `${handle}.lofilounge.sui`,
+        },
       };
     } catch (err) {
-      this.logger.error('Failed to register subdomain via Enoki:', err);
-      throw new Error(`Enoki subdomain registration failed: ${err.message}`);
+      this.logger.error('Failed to register subdomain via SuiNS SDK:', err);
+      throw new Error(`SuiNS subdomain registration failed: ${err.message}`);
     }
+  }
+
+  async getLeaderboard() {
+    const users = await this.prismaService.user.findMany({
+      orderBy: {
+        flurriesBalance: 'desc',
+      },
+      take: 25,
+    });
+    return users.map(u => ({
+      ...u,
+      tipsReceived: u.tipsReceived.toString(),
+    }));
+  }
+
+  async getGlacierFundDonations() {
+    const funds = await this.prismaService.glacierFund.findMany();
+    const sum = funds.reduce((acc, curr) => acc + curr.totalDonated, 0n);
+    return {
+      totalDonated: sum.toString(),
+    };
+  }
+
+  async getDashboardStats() {
+    const totalUsers = await this.prismaService.user.count();
+    
+    const sumResult = await this.prismaService.user.aggregate({
+      _sum: {
+        flurriesBalance: true,
+      },
+    });
+
+    const totalFlurries = sumResult._sum.flurriesBalance ?? 0;
+    const totalPosts = await this.prismaService.post.count();
+
+    return {
+      activeYetis: totalUsers,
+      dailyPoolClaimed: totalFlurries,
+      totalPosts,
+    };
   }
 }
