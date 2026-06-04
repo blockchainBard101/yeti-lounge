@@ -139,8 +139,15 @@ export class WalrusService {
       await flow.upload({ digest: registered.txDigest });
       this.logger.log('[WalrusRegister] Upload complete.');
 
-      // Step 4: Certify — this is a Sui tx that the FRONTEND does (Enoki sponsors gas)
-      // We return the blob info so the frontend can certify it.
+      // Step 4: Certify on backend using sponsor keypair to guarantee it is available on-chain immediately
+      try {
+        this.logger.log('[WalrusRegister] Certifying blob on backend...');
+        await flow.executeCertify({ signer: this.sponsorKeypair as any });
+        this.logger.log('[WalrusRegister] Certify complete.');
+      } catch (certErr) {
+        this.logger.warn(`[WalrusRegister] Backend certify failed: ${certErr.message || certErr}`);
+      }
+
       return {
         blobId: registered.blobId,
         blobObjectId: registered.blobObjectId,
@@ -226,6 +233,15 @@ export class WalrusService {
       this.logger.log('[WalrusRegisterQuilt] Uploading slivers...');
       await flow.upload({ digest: registered.txDigest });
       this.logger.log('[WalrusRegisterQuilt] Upload complete.');
+
+      // Certify the quilt on backend using sponsor keypair to guarantee it is available on-chain immediately
+      try {
+        this.logger.log('[WalrusRegisterQuilt] Certifying quilt on backend...');
+        await flow.executeCertify({ signer: this.sponsorKeypair as any });
+        this.logger.log('[WalrusRegisterQuilt] Certify complete.');
+      } catch (certErr) {
+        this.logger.warn(`[WalrusRegisterQuilt] Backend certify failed: ${certErr.message || certErr}`);
+      }
 
       // Extract patches from encoded index (for quilt fine-grained access)
       const patches: Record<string, string> = {};

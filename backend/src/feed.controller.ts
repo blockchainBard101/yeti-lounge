@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Delete, Param, Query, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 
 @Controller('feed')
@@ -24,5 +24,25 @@ export class FeedController {
         tipsReceived: p.author.tipsReceived.toString(),
       } : null,
     }));
+  }
+
+  @Delete(':objectId')
+  async deletePost(
+    @Param('objectId') objectId: string,
+    @Query('callerAddress') callerAddress: string,
+  ) {
+    const post = await this.prisma.post.findUnique({ where: { objectId } });
+
+    if (!post) {
+      throw new NotFoundException('Post not found');
+    }
+
+    if (post.authorAddress !== callerAddress) {
+      throw new ForbiddenException('You can only delete your own posts');
+    }
+
+    await this.prisma.post.delete({ where: { objectId } });
+
+    return { success: true, deletedObjectId: objectId };
   }
 }
