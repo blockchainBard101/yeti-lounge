@@ -3,7 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { SuiGrpcClient } from '@mysten/sui/grpc';
 import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { walrus, TESTNET_WALRUS_PACKAGE_CONFIG, WalrusFile } from '@mysten/walrus';
+import { walrus, TESTNET_WALRUS_PACKAGE_CONFIG, WalrusFile, blobIdFromInt } from '@mysten/walrus';
+import { PrismaService } from './prisma.service';
 
 /**
  * WalrusService — backend-side Walrus proxy.
@@ -30,7 +31,10 @@ export class WalrusService {
   private sponsorKeypair: Ed25519Keypair | null = null;
   private walrusClient: ReturnType<typeof this.buildWalrusClient> | null = null;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
     const rpcUrl =
       this.configService.get<string>('SUI_RPC_URL') ||
       'https://fullnode.testnet.sui.io:443';
@@ -94,10 +98,18 @@ export class WalrusService {
   }> {
     if (!this.sponsorKeypair) {
       this.logger.warn('[WalrusRegister] Mocking blob registration (no sponsor key).');
+      const mockBlobId = '0xmock_blob_' + Math.random().toString(36).substring(7);
+      const mockBlobObjectId = '0xmock_obj_' + Math.random().toString(36).substring(7);
+      const mockTxDigest = '0xmock_tx_' + Math.random().toString(36).substring(7);
+      await this.prisma.walrusBlob.upsert({
+        where: { blobId: mockBlobId },
+        update: { blobObjectId: mockBlobObjectId, epochs },
+        create: { blobId: mockBlobId, blobObjectId: mockBlobObjectId, epochs },
+      });
       return {
-        blobId: '0xmock_blob_' + Math.random().toString(36).substring(7),
-        blobObjectId: '0xmock_obj_' + Math.random().toString(36).substring(7),
-        txDigest: '0xmock_tx_' + Math.random().toString(36).substring(7),
+        blobId: mockBlobId,
+        blobObjectId: mockBlobObjectId,
+        txDigest: mockTxDigest,
         mock: true,
       };
     }
@@ -148,6 +160,12 @@ export class WalrusService {
         this.logger.warn(`[WalrusRegister] Backend certify failed: ${certErr.message || certErr}`);
       }
 
+      await this.prisma.walrusBlob.upsert({
+        where: { blobId: registered.blobId },
+        update: { blobObjectId: registered.blobObjectId, epochs },
+        create: { blobId: registered.blobId, blobObjectId: registered.blobObjectId, epochs },
+      });
+
       return {
         blobId: registered.blobId,
         blobObjectId: registered.blobObjectId,
@@ -157,10 +175,18 @@ export class WalrusService {
       this.logger.error(
         `[WalrusRegister] Failed to register blob on-chain: ${err.message || err}. Falling back to mock registration to prevent server crash.`,
       );
+      const mockBlobId = '0xmock_blob_' + Math.random().toString(36).substring(7);
+      const mockBlobObjectId = '0xmock_obj_' + Math.random().toString(36).substring(7);
+      const mockTxDigest = '0xmock_tx_' + Math.random().toString(36).substring(7);
+      await this.prisma.walrusBlob.upsert({
+        where: { blobId: mockBlobId },
+        update: { blobObjectId: mockBlobObjectId, epochs },
+        create: { blobId: mockBlobId, blobObjectId: mockBlobObjectId, epochs },
+      });
       return {
-        blobId: '0xmock_blob_' + Math.random().toString(36).substring(7),
-        blobObjectId: '0xmock_obj_' + Math.random().toString(36).substring(7),
-        txDigest: '0xmock_tx_' + Math.random().toString(36).substring(7),
+        blobId: mockBlobId,
+        blobObjectId: mockBlobObjectId,
+        txDigest: mockTxDigest,
         mock: true,
       };
     }
@@ -250,9 +276,21 @@ export class WalrusService {
         if (indexObj.patches) {
           for (const patch of indexObj.patches) {
             patches[patch.identifier] = patch.patchId;
+            // Map each patch ID to the quilt's on-chain blobObjectId
+            await this.prisma.walrusBlob.upsert({
+              where: { blobId: patch.patchId },
+              update: { blobObjectId: registered.blobObjectId, epochs },
+              create: { blobId: patch.patchId, blobObjectId: registered.blobObjectId, epochs },
+            }).catch((e) => this.logger.warn(`Failed to map quilt patch: ${e.message}`));
           }
         }
       }
+
+      await this.prisma.walrusBlob.upsert({
+        where: { blobId: registered.blobId },
+        update: { blobObjectId: registered.blobObjectId, epochs },
+        create: { blobId: registered.blobId, blobObjectId: registered.blobObjectId, epochs },
+      }).catch((e) => this.logger.warn(`Failed to map quilt blobId: ${e.message}`));
 
       return {
         blobId: registered.blobId,
@@ -271,6 +309,140 @@ export class WalrusService {
         patches: {},
         mock: true,
       };
+    }
+  }
+
+  /**
+   * Extend a registered blob's storage epoch on-chain using the sponsor's WAL.
+   *
+   * @param blobObjectId - The Sui object ID representing the registered blob.
+   * @param epochs       - The number of additional epochs to extend by (default: 5).
+   */
+   async findBlobObjectIdOnChain(blobId: string, ownerAddress?: string): Promise<string | null> {
+    const searchAddresses: string[] = [];
+    if (this.sponsorKeypair) {
+      searchAddresses.push(this.sponsorKeypair.toSuiAddress());
+    }
+    if (ownerAddress && ownerAddress.startsWith('0x') && !searchAddresses.includes(ownerAddress)) {
+      searchAddresses.push(ownerAddress);
+    }
+
+    if (searchAddresses.length === 0) return null;
+
+    try {
+      this.logger.log(`[WalrusExtend] Looking up on-chain blobObjectId for blobId: ${blobId} across addresses: ${searchAddresses.join(', ')}...`);
+
+      for (const address of searchAddresses) {
+        let hasNextPage = true;
+        let cursor: string | null = null;
+
+        while (hasNextPage) {
+          const ownedObjects = await this.suiClient.listOwnedObjects({
+            owner: address,
+            include: { json: true },
+            cursor: cursor || undefined,
+          });
+
+          for (const obj of ownedObjects.objects) {
+            const type = obj.type || '';
+            if (type.includes('::blob::Blob')) {
+              const fields = obj.json as any;
+
+              if (fields && fields.blob_id) {
+                const onChainBlobIdStr = String(fields.blob_id);
+                let normalizedOnChainBlobId = onChainBlobIdStr;
+
+                try {
+                  if (/^\d+$/.test(onChainBlobIdStr)) {
+                    normalizedOnChainBlobId = blobIdFromInt(BigInt(onChainBlobIdStr));
+                  }
+                } catch (err) {
+                  this.logger.debug(`Failed to normalize on-chain blob ID: ${err.message}`);
+                }
+
+                if (normalizedOnChainBlobId === blobId || onChainBlobIdStr === blobId) {
+                  const objectId = obj.objectId;
+                  if (objectId) {
+                    this.logger.log(`[WalrusExtend] Found matching on-chain blobObjectId: ${objectId} for blobId: ${blobId} owned by ${address}`);
+                    
+                    // Proactively cache to DB
+                    try {
+                      await this.prisma.walrusBlob.upsert({
+                        where: { blobId },
+                        update: { blobObjectId: objectId },
+                        create: { blobId, blobObjectId: objectId },
+                      });
+                    } catch (dbErr) {
+                      this.logger.warn(`Failed to cache blobObjectId in database: ${dbErr.message}`);
+                    }
+
+                    return objectId;
+                  }
+                }
+              }
+            }
+          }
+
+          hasNextPage = ownedObjects.hasNextPage;
+          cursor = ownedObjects.cursor || null;
+        }
+      }
+    } catch (err: any) {
+      this.logger.error(`[WalrusExtend] Error searching for blobObjectId on-chain: ${err.message || err}`);
+    }
+    return null;
+  }
+
+
+  /**
+   * Extend a registered blob's storage epoch on-chain using the sponsor's WAL.
+   *
+   * @param blobObjectIdOrId - The Sui object ID or Walrus blob ID representing the registered blob.
+   * @param epochs           - The number of additional epochs to extend by (default: 5).
+   * @param ownerAddress     - The user/owner Sui address to search under (optional).
+   */
+  async extendBlob(
+    blobObjectIdOrId: string,
+    epochs = 5,
+    ownerAddress?: string,
+  ): Promise<{
+    txDigest: string;
+    mock?: boolean;
+  }> {
+    let blobObjectId = blobObjectIdOrId;
+
+    // If it's not a hex object ID, try to resolve it from the chain
+    if (!blobObjectId || !/^0x[a-fA-F0-9]{64}$/.test(blobObjectId)) {
+      this.logger.log(`[WalrusExtend] Input "${blobObjectIdOrId}" is not a valid object ID. Resolving...`);
+      const resolved = await this.findBlobObjectIdOnChain(blobObjectIdOrId, ownerAddress);
+      if (resolved) {
+        blobObjectId = resolved;
+      } else {
+        throw new Error(`Failed to resolve on-chain Blob object ID for blob ID "${blobObjectIdOrId}"`);
+      }
+    }
+
+    if (!this.sponsorKeypair) {
+      throw new Error('[WalrusExtend] Sponsor keypair is missing. Cannot execute on-chain extension.');
+    }
+
+    try {
+      const client = this.getWalrusClient();
+      this.logger.log(`[WalrusExtend] Extending storage for blob: ${blobObjectId} by ${epochs} epochs...`);
+      
+      const { digest } = await client.walrus.executeExtendBlobTransaction({
+        blobObjectId,
+        epochs,
+        signer: this.sponsorKeypair as any,
+      });
+
+      this.logger.log(`[WalrusExtend] Storage successfully extended. txDigest: ${digest}`);
+      return { txDigest: digest };
+    } catch (err: any) {
+      this.logger.error(
+        `[WalrusExtend] Failed to extend storage on-chain for blob ${blobObjectId}: ${err.message || err}`,
+      );
+      throw err;
     }
   }
 }

@@ -7,15 +7,15 @@ export class SponsorController {
 
   @Post('sponsored/sponsor')
   async sponsor(
-    @Body() body: { txBytes: string; senderAddress: string },
+    @Body() body: { txBytes: string; senderAddress: string; useLocalSponsor?: boolean },
   ) {
-    const { txBytes, senderAddress } = body;
+    const { txBytes, senderAddress, useLocalSponsor } = body;
     if (!txBytes || !senderAddress) {
       throw new BadRequestException('Missing txBytes or senderAddress in request body');
     }
 
     try {
-      return await this.sponsorService.sponsorTransaction(txBytes, senderAddress);
+      return await this.sponsorService.sponsorTransaction(txBytes, senderAddress, !!useLocalSponsor);
     } catch (err) {
       throw new BadRequestException(err.message);
     }

@@ -60,7 +60,57 @@ export class SponsorService {
       this.logger.warn('Sponsor private key is using placeholder values. Sponsorship will be mocked.');
     }
   }
-  async sponsorTransaction(txBytes: string, sender: string) {
+  async sponsorTransaction(txBytes: string, sender: string, useLocalSponsor = false) {
+    // If useLocalSponsor is true and we have a local keypair, sponsor it directly.
+    // This allows arbitrary token sending without Enoki's allow-list limits.
+    if (useLocalSponsor && this.sponsorKeypair) {
+      try {
+        const sponsorAddress = this.sponsorKeypair.getPublicKey().toSuiAddress();
+        this.logger.log(`[LocalSponsor] Sponsoring transaction for ${sender} using backend wallet: ${sponsorAddress}`);
+
+        // 1. Recreate transaction from Kind bytes
+        const tx = Transaction.fromKind(Buffer.from(txBytes, 'base64'));
+        tx.setSender(sender);
+        tx.setGasOwner(sponsorAddress);
+
+        // 2. Fetch sponsor's SUI coins for gas
+        const coinsRes: any = await this.suiClient.listCoins({
+          owner: sponsorAddress,
+          coinType: '0x2::sui::SUI',
+        });
+
+        const coinsList = coinsRes?.objects || coinsRes?.data || [];
+        if (coinsList.length === 0) {
+          throw new Error('Sponsor wallet has no SUI coins to cover gas');
+        }
+
+        // 3. Set sponsor's gas coins as gas payment
+        tx.setGasPayment(coinsList.map((c: any) => ({
+          objectId: c.coinObjectId || c.objectId,
+          version: c.version,
+          digest: c.digest,
+        })));
+
+        tx.setGasBudget(15_000_000); // 0.015 SUI gas budget limit
+
+        // 4. Build transaction
+        const builtBytes = await tx.build({ client: this.suiClient as any });
+
+        // 5. Sign transaction bytes with sponsor keypair
+        const { signature } = await this.sponsorKeypair.signTransaction(builtBytes);
+        this.logger.log(`[LocalSponsor] Signature generated: ${signature ? signature.slice(0, 15) : 'undefined'}...`);
+
+        return {
+          bytes: Buffer.from(builtBytes).toString('base64'),
+          signature,
+          digest: '', // not used for local execution
+          localSponsor: true
+        };
+      } catch (localErr: any) {
+        this.logger.error('[LocalSponsor] Failed local sponsorship, falling back to Enoki:', localErr);
+      }
+    }
+
     const apiKey = this.configService.get<string>('ENOKI_API_KEY');
     try {
       const response = await fetch('https://api.enoki.mystenlabs.com/v1/transaction-blocks/sponsor', {

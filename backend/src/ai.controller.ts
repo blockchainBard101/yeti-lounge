@@ -3,10 +3,19 @@ import { GoogleGenAI } from '@google/genai';
 import OpenAI, { toFile } from 'openai';
 import * as fs from 'fs';
 import * as path from 'path';
+import { WalrusMemoryService } from './walrus-memory.service';
+import { WalrusService } from './walrus.service';
+
+const CURATOR_ADDRESS = '0x0000000000000000000000000000000000000000000000000000000000000c01';
 
 @Controller('ai')
 export class AiController {
   private readonly logger = new Logger(AiController.name);
+
+  constructor(
+    private readonly walrusMemoryService: WalrusMemoryService,
+    private readonly walrusService: WalrusService,
+  ) {}
 
   @Post('generate')
   async generateImage(@Body('prompt') prompt: string) {
@@ -123,6 +132,9 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
 
     this.logger.log(`Using AI provider: ${provider} (OpenAI Model preference: ${openAiModel})`);
 
+    let imageUrl = '';
+    let isMock = false;
+
     // 1. OpenAI Integration
     if (provider === 'openai') {
       if (openAiApiKey) {
@@ -153,10 +165,10 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
           const item = response.data?.[0];
           if (item) {
             if (item.url) {
-              return { url: item.url };
+              imageUrl = item.url;
             }
             if (item.b64_json) {
-              return { url: `data:image/png;base64,${item.b64_json}` };
+              imageUrl = `data:image/png;base64,${item.b64_json}`;
             }
           }
         } catch (err: any) {
@@ -187,10 +199,10 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
               const item = response.data?.[0];
               if (item) {
                 if (item.url) {
-                  return { url: item.url };
+                  imageUrl = item.url;
                 }
                 if (item.b64_json) {
-                  return { url: `data:image/png;base64,${item.b64_json}` };
+                  imageUrl = `data:image/png;base64,${item.b64_json}`;
                 }
               }
             } catch (fallbackErr) {
@@ -204,7 +216,7 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
     }
 
     // 2. Gemini Integration (only if gemini is explicitly selected, or if provider is not openai and gemini key is present)
-    if ((provider === 'gemini' || (provider !== 'openai' && !openAiApiKey)) && geminiApiKey) {
+    if (!imageUrl && (provider === 'gemini' || (provider !== 'openai' && !openAiApiKey)) && geminiApiKey) {
       try {
         this.logger.log('Attempting Gemini image generation...');
         const ai = new GoogleGenAI({ apiKey: geminiApiKey });
@@ -220,14 +232,14 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
 
         const base64Image = response.generatedImages?.[0]?.image?.imageBytes;
         if (base64Image) {
-          return { url: `data:image/jpeg;base64,${base64Image}` };
+          imageUrl = `data:image/jpeg;base64,${base64Image}`;
         }
       } catch (err) {
         this.logger.error('Failed to generate image via GoogleGenAI SDK:', err);
       }
     }
 
-    if (customApiUrl) {
+    if (!imageUrl && customApiUrl) {
       try {
         const res = await fetch(customApiUrl, {
           method: 'POST',
@@ -236,45 +248,342 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
         });
         if (res.ok) {
           const data = await res.json();
-          if (data.url) return { url: data.url };
+          if (data.url) imageUrl = data.url;
         }
       } catch (err) {
         this.logger.error('Failed to query custom AI generation API:', err);
       }
     }
 
-    // Graceful fallback matching logic when credentials are not present
-    this.logger.warn(
-      'Gemini API key not configured. To enable live Imagen 3 generation, set the GEMINI_API_KEY environment variable. Falling back to reference matching.',
-    );
+    // Fallback reference matching when no AI response was generated
+    if (!imageUrl) {
+      this.logger.warn(
+        'AI generation key not configured or failed. Falling back to reference matching.',
+      );
+      const lower = prompt.toLowerCase();
+      let file = 'yeti-mascot.png'; // default fallback logo
 
-    const lower = prompt.toLowerCase();
-    let file = 'yeti-mascot.png'; // default fallback logo
+      if (lower.includes('road') || lower.includes('car') || lower.includes('drive') || lower.includes('travel') || lower.includes('walk')) {
+        file = 'yeti-walking-road.jpeg';
+      } else if (lower.includes('hackathon') || lower.includes('code') || lower.includes('coding') || lower.includes('computer') || lower.includes('laptop')) {
+        file = 'yeti-hackathon.jpeg';
+      } else if (lower.includes('switch') || lower.includes('game') || lower.includes('gaming') || lower.includes('play')) {
+        file = 'lofi-switch.jpeg';
+      } else if (lower.includes('study') || lower.includes('homework') || lower.includes('book') || lower.includes('read') || lower.includes('desk')) {
+        file = 'yeti-lofi-study.jpeg';
+      } else if (lower.includes('igloo') || lower.includes('snow') || lower.includes('home') || lower.includes('house')) {
+        file = 'yeti-igloo.jpeg';
+      } else if (lower.includes('jetpack') || lower.includes('fly') || lower.includes('sky')) {
+        file = 'yeti-jetpack.jpeg';
+      } else if (lower.includes('ok') || lower.includes('chill') || lower.includes('hand') || lower.includes('relax')) {
+        file = 'yeti-hand-ok-lofi.jpeg';
+      } else if (lower.includes('presentation') || lower.includes('stage') || lower.includes('talk') || lower.includes('speak')) {
+        file = 'yeti-stage-presentation.jpeg';
+      } else if (lower.includes('mainframe') || lower.includes('server') || lower.includes('database')) {
+        file = 'yeti-mainframe.jpeg';
+      } else if (lower.includes('live') || lower.includes('sui') || lower.includes('blockchain') || lower.includes('celebrate')) {
+        file = 'yeti-live-on-sui.jpeg';
+      } else if (lower.includes('sustainable') || lower.includes('growth') || lower.includes('plant') || lower.includes('tree')) {
+        file = 'yeti-sustainable-growth.jpeg';
+      }
 
-    if (lower.includes('road') || lower.includes('car') || lower.includes('drive') || lower.includes('travel') || lower.includes('walk')) {
-      file = 'yeti-walking-road.jpeg';
-    } else if (lower.includes('hackathon') || lower.includes('code') || lower.includes('coding') || lower.includes('computer') || lower.includes('laptop')) {
-      file = 'yeti-hackathon.jpeg';
-    } else if (lower.includes('switch') || lower.includes('game') || lower.includes('gaming') || lower.includes('play')) {
-      file = 'lofi-switch.jpeg';
-    } else if (lower.includes('study') || lower.includes('homework') || lower.includes('book') || lower.includes('read') || lower.includes('desk')) {
-      file = 'yeti-lofi-study.jpeg';
-    } else if (lower.includes('igloo') || lower.includes('snow') || lower.includes('home') || lower.includes('house')) {
-      file = 'yeti-igloo.jpeg';
-    } else if (lower.includes('jetpack') || lower.includes('fly') || lower.includes('sky')) {
-      file = 'yeti-jetpack.jpeg';
-    } else if (lower.includes('ok') || lower.includes('chill') || lower.includes('hand') || lower.includes('relax')) {
-      file = 'yeti-hand-ok-lofi.jpeg';
-    } else if (lower.includes('presentation') || lower.includes('stage') || lower.includes('talk') || lower.includes('speak')) {
-      file = 'yeti-stage-presentation.jpeg';
-    } else if (lower.includes('mainframe') || lower.includes('server') || lower.includes('database')) {
-      file = 'yeti-mainframe.jpeg';
-    } else if (lower.includes('live') || lower.includes('sui') || lower.includes('blockchain') || lower.includes('celebrate')) {
-      file = 'yeti-live-on-sui.jpeg';
-    } else if (lower.includes('sustainable') || lower.includes('growth') || lower.includes('plant') || lower.includes('tree')) {
-      file = 'yeti-sustainable-growth.jpeg';
+      imageUrl = `/lofi-img/${file}`;
+      isMock = true;
     }
 
-    return { url: `/lofi-img/${file}` };
+    // ── UPLOAD GENERATED IMAGE BYTES TO WALRUS Decent Storage ──
+    try {
+      let base64Data = '';
+      if (imageUrl.startsWith('data:')) {
+        base64Data = imageUrl.split(',')[1];
+      } else if (imageUrl.startsWith('/lofi-img/') || imageUrl.startsWith('http')) {
+        // Resolve absolute file path or fetch remote URL, and convert to base64 for Walrus
+        let buffer: Buffer;
+        if (imageUrl.startsWith('/lofi-img/')) {
+          const filePath = path.resolve(process.cwd(), '../frontend/public', imageUrl.replace(/^\//, ''));
+          buffer = fs.readFileSync(filePath);
+        } else {
+          const res = await fetch(imageUrl);
+          buffer = Buffer.from(await res.arrayBuffer());
+        }
+        base64Data = buffer.toString('base64');
+      }
+
+      if (base64Data) {
+        this.logger.log(`Registering generated AI image on Walrus storage...`);
+        const uploadRes = await this.walrusService.registerBlob(
+          base64Data,
+          CURATOR_ADDRESS,
+          20, // default to 20 epochs
+        );
+
+        this.logger.log(`Generated image registered on Walrus. Blob ID: ${uploadRes.blobId}`);
+        const aggregatorUrl = `https://aggregator.walrus-testnet.walrus.space/v1/blobs/${uploadRes.blobId}`;
+        
+        return {
+          url: aggregatorUrl,
+          blobId: uploadRes.blobId,
+        };
+      }
+    } catch (err: any) {
+      this.logger.error(`Failed to register generated image to Walrus: ${err.message || err}`);
+    }
+
+    // Fallback in case upload fails
+    return { url: imageUrl };
+  }
+
+  @Post('chat')
+  async chatWithYeti(
+    @Body('message') message: string,
+    @Body('sessionId') sessionId = 'global',
+    @Body('role') role?: 'user' | 'assistant',
+  ) {
+    this.logger.log(`Chat request in session "${sessionId}": "${message}" (Direct role override: ${role || 'none'})`);
+
+    // 1. Retrieve session history from Walrus Memory
+    const sessionQuery = `[Session: ${sessionId}]`;
+    const memories = await this.walrusMemoryService.recall(sessionQuery);
+
+    // Parse memories to extract role, content, and timestamp, filtering strictly by sessionId
+    const fullHistory = memories
+      .filter((m) => m && typeof m.text === 'string' && m.text.includes(`[Session: ${sessionId}]`))
+      .map((m) => {
+        const text = m.text;
+        const timeMatch = text.match(/\[Time: ([\d-]+T[\d:.]+(?:Z|[+-]\d+:\d+))\]/);
+        const roleMatch = text.match(/\[Role: (user|assistant)\]/);
+        if (!roleMatch) return null;
+
+        const labelEnd = text.indexOf(']', text.lastIndexOf('[Role:')) + 2;
+        const content = text.slice(labelEnd);
+
+        return {
+          timestamp: timeMatch ? new Date(timeMatch[1]).getTime() : 0,
+          role: roleMatch[1],
+          content,
+        };
+      })
+      .filter((h) => h !== null)
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    // Keep LLM context turns small (latest 10 messages)
+    const promptHistory = fullHistory.slice(-10);
+
+    // If direct role override is specified, record the message directly and return
+    if (role && message && message.trim() !== '') {
+      const nowTimestamp = new Date().toISOString();
+      await this.walrusMemoryService.remember(
+        `[Session: ${sessionId}] [Time: ${nowTimestamp}] [Role: ${role}] ${message}`,
+      );
+      return { response: 'Direct memory logged' };
+    }
+
+    if (!message || message.trim() === '') {
+      return {
+        response: 'History loaded',
+        // Return a larger history window (latest 50 messages) to the frontend
+        history: fullHistory.slice(-50).map((h) => ({ role: h.role, content: h.content })),
+      };
+    }
+
+    // 2. Yeti Personality prompt
+    const systemPrompt = `You are "Lofi Mascot", a chilled-out, snowboard-loving Yeti AI Copilot in the Yeti Lounge.
+Keep your responses relaxed, friendly, cozy, and highly supportive. Use winter/snow/Sui emojis (🥶, 🏂, ❄️, 🏔️).
+Help users with lounge activities, chat, or generating memes. If they want to generate an image, tell them they can use the "Generate Image" check!
+Always format your responses with clean Markdown, using bold text (**word**) for emphasis and headers where appropriate.
+If you list items, ALWAYS use newlines between list items so they format as proper Markdown lists (e.g., each item on its own line).`;
+
+    let reply = '';
+    const provider = process.env.AI_PROVIDER || 'gemini';
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+    const openAiApiKey = process.env.OPENAI_API_KEY;
+
+    try {
+      if (provider === 'openai' && openAiApiKey) {
+        const openai = new OpenAI({ apiKey: openAiApiKey });
+        const messages = [{ role: 'system', content: systemPrompt }];
+        for (const turn of promptHistory) {
+          messages.push({
+            role: turn.role as any,
+            content: turn.content,
+          });
+        }
+        messages.push({ role: 'user', content: message });
+
+        const response = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: messages as any,
+        });
+        reply = response.choices[0].message.content || '🥶 Yeti got cold. Try again!';
+      } else if (geminiApiKey) {
+        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+        const contents: any[] = [];
+        contents.push({ role: 'user', parts: [{ text: `System Instruction: ${systemPrompt}` }] });
+        for (const turn of promptHistory) {
+          contents.push({
+            role: turn.role === 'user' ? 'user' : 'model',
+            parts: [{ text: turn.content }]
+          });
+        }
+        contents.push({ role: 'user', parts: [{ text: message }] });
+
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents,
+        });
+        reply = response.text || '🥶 Yeti got cold. Try again!';
+      } else {
+        // Fallback mock conversation
+        reply = `🥶 [Mock Yeti] Hey there! You said: "${message}". I'm chilling in the Yeti Lounge right now! Let's hit the slopes 🏂 or mint some NFTs on Sui ❄️!`;
+      }
+    } catch (err: any) {
+      this.logger.error(`Failed to generate chat response: ${err.message || err}`, err.stack);
+      reply = `🥶 Yeti is having connection issues: "${err.message || err}". Let's take a cozy break!`;
+    }
+
+    // 3. Persist conversation turn back to Walrus Memory
+    const userTimestamp = new Date().toISOString();
+    await this.walrusMemoryService.remember(
+      `[Session: ${sessionId}] [Time: ${userTimestamp}] [Role: user] ${message}`,
+    );
+
+    const assistantTimestamp = new Date().toISOString();
+    await this.walrusMemoryService.remember(
+      `[Session: ${sessionId}] [Time: ${assistantTimestamp}] [Role: assistant] ${reply}`,
+    );
+
+    return { response: reply };
+  }
+
+  @Post('multi-agent')
+  async multiAgentDebate(
+    @Body('message') message: string,
+    @Body('sessionId') sessionId = 'global',
+  ) {
+    this.logger.log(`Multi-agent debate request in session "${sessionId}": "${message}"`);
+
+    const provider = process.env.AI_PROVIDER || 'gemini';
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+    const openAiApiKey = process.env.OPENAI_API_KEY;
+
+    let chillYetiSuggestion = '';
+    let alphaYetiCritique = '';
+    let finalPrompt = '';
+
+    try {
+      if (provider === 'openai' && openAiApiKey) {
+        const openai = new OpenAI({ apiKey: openAiApiKey });
+
+        // Turn 1: Chill Yeti
+        const turn1 = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are Chill Yeti, a relaxed snowboarder. Propose a cozy, chill mascot concept for the user\'s idea: ' + message,
+            },
+          ],
+        });
+        chillYetiSuggestion = turn1.choices[0].message.content || '';
+
+        // Turn 2: Alpha Yeti
+        const turn2 = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are Alpha Yeti, a fast-paced crypto trader. Critique Chill Yeti\'s suggestion and suggest a high-energy, hyped-up upgrade to: ' + chillYetiSuggestion,
+            },
+          ],
+        });
+        alphaYetiCritique = turn2.choices[0].message.content || '';
+
+        // Turn 3: Final compromise
+        const turn3 = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are Chill Yeti. Combine your suggestion and Alpha Yeti\'s critique into a single unified creative prompt for the user\'s meme idea.',
+            },
+          ],
+        });
+        finalPrompt = turn3.choices[0].message.content || '';
+      } else if (geminiApiKey) {
+        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+
+        // Turn 1: Chill Yeti
+        const turn1 = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: 'You are Chill Yeti, a relaxed snowboarder. Propose a cozy, chill mascot concept for the user\'s idea: ' + message,
+        });
+        chillYetiSuggestion = turn1.text || '';
+
+        // Turn 2: Alpha Yeti
+        const turn2 = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: 'You are Alpha Yeti, a fast-paced crypto trader. Critique Chill Yeti\'s suggestion and suggest a high-energy, hyped-up upgrade to: ' + chillYetiSuggestion,
+        });
+        alphaYetiCritique = turn2.text || '';
+
+        // Turn 3: Final compromise
+        const turn3 = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: 'You are Chill Yeti. Combine your suggestion and Alpha Yeti\'s critique into a single unified creative prompt for the user\'s meme idea.',
+        });
+        finalPrompt = turn3.text || '';
+      } else {
+        // Mock fallback
+        chillYetiSuggestion = `🏂 [Chill Yeti] Let's make it super relaxed! Maybe a cozy Lofi Yeti sipping hot cocoa on a snowy snowboard deck...`;
+        alphaYetiCritique = `⚡ [Alpha Yeti] Too slow! We need it hyped! Add laser eyes, a SUI rocket booster, and make the Yeti hold a giant gold LOFI token!`;
+        finalPrompt = `❄️ [Chill Yeti] Haha, alright, let's compromise! A cozy Lofi Yeti with glowing ice-blue eyes, boarding down a SUI-branded peak with hot cocoa in one hand and a neon rocket trail!`;
+      }
+    } catch (err: any) {
+      this.logger.error(`Multi-agent generation failed: ${err.message || err}`, err.stack);
+      chillYetiSuggestion = '🥶 Brain freeze...';
+      alphaYetiCritique = '📈 Market crash...';
+      finalPrompt = '❄️ Let\'s keep it simple: Cozy Yeti boarding down the mountain.';
+    }
+
+    const debate = [
+      { agent: 'Chill Yeti 🏂', text: chillYetiSuggestion },
+      { agent: 'Alpha Yeti ⚡', text: alphaYetiCritique },
+      { agent: 'Final Concept ❄️', text: finalPrompt },
+    ];
+
+    // 1. Save collaboration transcript to Walrus
+    const transcriptJson = JSON.stringify({
+      sessionId,
+      timestamp: new Date().toISOString(),
+      idea: message,
+      debate,
+    }, null, 2);
+
+    this.logger.log('Uploading multi-agent collaboration transcript to Walrus...');
+    const base64Bytes = Buffer.from(transcriptJson).toString('base64');
+    const uploadRes = await this.walrusService.registerBlob(base64Bytes, CURATOR_ADDRESS);
+    this.logger.log(`Multi-agent collaboration log uploaded to Walrus. Blob ID: ${uploadRes.blobId}`);
+
+    // 2. Persist turn in Walrus session memory (so history displays it)
+    const userTimestamp = new Date().toISOString();
+    await this.walrusMemoryService.remember(
+      `[Session: ${sessionId}] [Time: ${userTimestamp}] [Role: user] [Multi-Agent Mode] Proposed: ${message}`,
+    );
+
+    const assistantTimestamp = new Date().toISOString();
+    const formattedResultText = `Multi-Agent Debate (Verifiable Log: https://aggregator.walrus-testnet.walrus.space/v1/blobs/${uploadRes.blobId}):\n\n` +
+      `🏂 Chill Yeti: ${chillYetiSuggestion}\n\n` +
+      `⚡ Alpha Yeti: ${alphaYetiCritique}\n\n` +
+      `❄️ Final Concept: ${finalPrompt}`;
+
+    await this.walrusMemoryService.remember(
+      `[Session: ${sessionId}] [Time: ${assistantTimestamp}] [Role: assistant] [BlobId: ${uploadRes.blobId}] ${formattedResultText}`,
+    );
+
+    return {
+      debate,
+      blobId: uploadRes.blobId,
+      response: formattedResultText,
+    };
   }
 }

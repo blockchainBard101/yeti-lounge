@@ -109,3 +109,10 @@ model IndexerCursor {
   cursor    String       // opaque cursor string returned by Sui GraphQL
   updatedAt DateTime @updatedAt
 }
+
+model WalrusBlob {
+  blobId       String   @id
+  blobObjectId String
+  epochs       Int      @default(5)
+  createdAt    DateTime @default(now())
+}

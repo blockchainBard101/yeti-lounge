@@ -13,6 +13,8 @@ import { EventsController } from './events.controller';
 import { QuestsController } from './quests.controller';
 import { AiController } from './ai.controller';
 import { SwapController } from './swap.controller';
+import { WalrusMemoryService } from './walrus-memory.service';
+import { LoungeCuratorService } from './lounge-curator.service';
 
 @Module({
   imports: [
@@ -21,6 +23,6 @@ import { SwapController } from './swap.controller';
     }),
   ],
   controllers: [AppController, SponsorController, WalrusController, FeedController, EventsController, QuestsController, AiController, SwapController],
-  providers: [AppService, PrismaService, SponsorService, WalrusService, IndexerService],
+  providers: [AppService, PrismaService, SponsorService, WalrusService, IndexerService, WalrusMemoryService, LoungeCuratorService],
 })
 export class AppModule {}
