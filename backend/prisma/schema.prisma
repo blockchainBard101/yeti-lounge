@@ -20,6 +20,9 @@ model User {
   lastCheckIn     DateTime?
   flurriesBalance Int       @default(100)
   tipsReceived    BigInt    @default(0)
+  freeChatsRemaining     Int       @default(5)
+  freeImageGensRemaining Int       @default(1)
+  lastUsageDate          String?   // Format: "YYYY-MM-DD"
 
   posts            Post[]
   comments         Comment[]
@@ -116,3 +119,10 @@ model WalrusBlob {
   epochs       Int      @default(5)
   createdAt    DateTime @default(now())
 }
+
+model UsedTransaction {
+  digest    String   @id
+  purpose   String
+  createdAt DateTime @default(now())
+}
+

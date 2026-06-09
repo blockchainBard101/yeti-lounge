@@ -11,18 +11,44 @@ import { IndexerService } from './indexer.service';
 import { FeedController } from './feed.controller';
 import { EventsController } from './events.controller';
 import { QuestsController } from './quests.controller';
+import { QuestsService } from './quests.service';
 import { AiController } from './ai.controller';
 import { SwapController } from './swap.controller';
 import { WalrusMemoryService } from './walrus-memory.service';
 import { LoungeCuratorService } from './lounge-curator.service';
+import { TxVerifierService } from './tx-verifier.service';
+import { ProfileController } from './profile.controller';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    AuthModule,
   ],
-  controllers: [AppController, SponsorController, WalrusController, FeedController, EventsController, QuestsController, AiController, SwapController],
-  providers: [AppService, PrismaService, SponsorService, WalrusService, IndexerService, WalrusMemoryService, LoungeCuratorService],
+  controllers: [
+    AppController,
+    SponsorController,
+    WalrusController,
+    FeedController,
+    EventsController,
+    QuestsController,
+    AiController,
+    SwapController,
+    ProfileController,
+  ],
+  providers: [
+    AppService,
+    PrismaService,
+    SponsorService,
+    WalrusService,
+    IndexerService,
+    WalrusMemoryService,
+    LoungeCuratorService,
+    QuestsService,
+    TxVerifierService,
+  ],
 })
 export class AppModule {}
+

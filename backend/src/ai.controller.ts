@@ -1,10 +1,13 @@
-import { Controller, Post, Body, Logger } from '@nestjs/common';
+import { Controller, Post, Body, Logger, BadRequestException, UseGuards, Req } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
 import OpenAI, { toFile } from 'openai';
 import * as fs from 'fs';
 import * as path from 'path';
 import { WalrusMemoryService } from './walrus-memory.service';
 import { WalrusService } from './walrus.service';
+import { PrismaService } from './prisma.service';
+import { TxVerifierService } from './tx-verifier.service';
+import { OptionalAuthGuard } from './auth/optional-auth.guard';
 
 const CURATOR_ADDRESS = '0x0000000000000000000000000000000000000000000000000000000000000c01';
 
@@ -15,11 +18,84 @@ export class AiController {
   constructor(
     private readonly walrusMemoryService: WalrusMemoryService,
     private readonly walrusService: WalrusService,
+    private readonly prismaService: PrismaService,
+    private readonly txVerifierService: TxVerifierService,
   ) {}
 
+  private async checkAndConsumeDailyLimit(
+    suiAddress: string,
+    limitField: 'freeChatsRemaining' | 'freeImageGensRemaining',
+    txDigest: string | undefined,
+    costLofi: number,
+    purpose: string,
+  ): Promise<{ freeUsed: boolean }> {
+    if (!suiAddress) {
+      throw new BadRequestException('suiAddress is required.');
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    let user = await this.prismaService.user.findUnique({
+      where: { suiAddress },
+    });
+
+    if (!user) {
+      user = await this.prismaService.user.create({
+        data: {
+          suiAddress,
+          freeChatsRemaining: 5,
+          freeImageGensRemaining: 1,
+          lastUsageDate: todayStr,
+        },
+      });
+    }
+
+    if (user.lastUsageDate !== todayStr) {
+      user = await this.prismaService.user.update({
+        where: { suiAddress },
+        data: {
+          freeChatsRemaining: 5,
+          freeImageGensRemaining: 1,
+          lastUsageDate: todayStr,
+        },
+      });
+    }
+
+    const remaining = user[limitField];
+
+    if (remaining > 0) {
+      await this.prismaService.user.update({
+        where: { suiAddress },
+        data: {
+          [limitField]: remaining - 1,
+        },
+      });
+      return { freeUsed: true };
+    }
+
+    if (!txDigest) {
+      throw new BadRequestException(`No free attempts remaining. A transaction of ${costLofi} LOFI is required.`);
+    }
+
+    await this.txVerifierService.verifyPayment(txDigest, suiAddress, costLofi, purpose);
+    return { freeUsed: false };
+  }
+
+
   @Post('generate')
-  async generateImage(@Body('prompt') prompt: string) {
+  @UseGuards(OptionalAuthGuard)
+  async generateImage(
+    @Req() req: any,
+    @Body('prompt') prompt: string,
+    @Body('suiAddress') suiAddressOverride?: string,
+    @Body('txDigest') txDigest?: string,
+  ) {
+    const suiAddress = req.user.suiAddress || suiAddressOverride;
+    if (suiAddress) {
+      await this.checkAndConsumeDailyLimit(suiAddress, 'freeImageGensRemaining', txDigest, 1.0, 'ai_generate');
+    }
     this.logger.log(`Received image generation prompt: "${prompt}"`);
+
     
     const systemPrompt = `You are generating images of a mascot named "Lofi".
 
@@ -334,12 +410,22 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
   }
 
   @Post('chat')
+  @UseGuards(OptionalAuthGuard)
   async chatWithYeti(
+    @Req() req: any,
     @Body('message') message: string,
-    @Body('sessionId') sessionId = 'global',
+    @Body('suiAddress') suiAddressOverride?: string,
+    @Body('txDigest') txDigest?: string,
+    @Body('sessionId') sessionIdParam = 'global',
     @Body('role') role?: 'user' | 'assistant',
   ) {
+    const suiAddress = req.user.suiAddress || suiAddressOverride;
+    const sessionId = req.user.suiAddress || sessionIdParam;
+    if (suiAddress && !role) {
+      await this.checkAndConsumeDailyLimit(suiAddress, 'freeChatsRemaining', txDigest, 0.1, 'ai_chat');
+    }
     this.logger.log(`Chat request in session "${sessionId}": "${message}" (Direct role override: ${role || 'none'})`);
+
 
     // 1. Retrieve session history from Walrus Memory
     const sessionQuery = `[Session: ${sessionId}]`;
@@ -456,11 +542,21 @@ If you list items, ALWAYS use newlines between list items so they format as prop
   }
 
   @Post('multi-agent')
+  @UseGuards(OptionalAuthGuard)
   async multiAgentDebate(
+    @Req() req: any,
     @Body('message') message: string,
-    @Body('sessionId') sessionId = 'global',
+    @Body('suiAddress') suiAddressOverride?: string,
+    @Body('txDigest') txDigest?: string,
+    @Body('sessionId') sessionIdParam = 'global',
   ) {
+    const suiAddress = req.user.suiAddress || suiAddressOverride;
+    const sessionId = req.user.suiAddress || sessionIdParam;
+    if (suiAddress) {
+      await this.checkAndConsumeDailyLimit(suiAddress, 'freeChatsRemaining', txDigest, 2.0, 'ai_debate');
+    }
     this.logger.log(`Multi-agent debate request in session "${sessionId}": "${message}"`);
+
 
     const provider = process.env.AI_PROVIDER || 'gemini';
     const geminiApiKey = process.env.GEMINI_API_KEY;

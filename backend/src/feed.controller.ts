@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Delete, Param, Query, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Query, NotFoundException, ForbiddenException, BadRequestException, UseGuards, Req } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { WalrusService } from './walrus.service';
+import { AuthGuard } from './auth/auth.guard';
 
 @Controller('feed')
 export class FeedController {
@@ -150,17 +151,19 @@ export class FeedController {
   }
 
   @Delete(':objectId')
+  @UseGuards(AuthGuard)
   async deletePost(
+    @Req() req: any,
     @Param('objectId') objectId: string,
-    @Query('callerAddress') callerAddress: string,
   ) {
+    const callerAddress = req.user.suiAddress;
     const post = await this.prisma.post.findUnique({ where: { objectId } });
 
     if (!post) {
       throw new NotFoundException('Post not found');
     }
 
-    if (post.authorAddress !== callerAddress) {
+    if (post.authorAddress.toLowerCase() !== callerAddress.toLowerCase()) {
       throw new ForbiddenException('You can only delete your own posts');
     }
 
