@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── LIGHT ICE THEME ──────────────────────────────
+     Inspired by clean app design with Yeti brand accent
+  ─────────────────────────────────────────────────── */
+  --color-bg-primary:        #EEF4FF;   /* Light ice blue canvas */
+  --color-surface:           #FFFFFF;   /* White cards */
+  --color-surface-secondary: #F3F8FF;   /* Slightly tinted surface */
+  --color-accent:            #00B8E6;   /* Yeti ice blue (slightly deeper for light bg contrast) */
+  --color-text-primary:      #0A1428;   /* Deep navy text (was background) */
+  --color-text-secondary:    #4A6080;   /* Muted cool grey-blue */
+  --color-border-ice:        #D0DCF0;   /* Soft blue-grey border */
+
+  --font-heading: "Boogaloo", "Space Grotesk", system-ui, sans-serif;   /* Boogaloo — CLAY Hackathon style */
+  --font-body:    "Plus Jakarta Sans", system-ui, sans-serif;          /* Plus Jakarta Sans — clean body */
+  --font-fun:     "Kalam", cursive;                                    /* Kalam — Code Like a Yeti style */
+}
+
+/* ── Scrollbar ────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #D0DCF0; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #00B8E6; }
+
+/* ── Body ─────────────────────────────────────────── */
+body {
+  background-color: #EEF4FF;
+  color: #0A1428;
+  font-family: var(--font-inter), "Plus Jakarta Sans", sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Glass Panel — white card with soft shadow ─────── */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(208, 220, 240, 0.7);
+  box-shadow: 0 2px 16px rgba(10, 20, 60, 0.06);
+}
+
+/* Accent-bordered variant */
+.glass-panel-accent {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 184, 230, 0.25);
+  box-shadow: 0 2px 20px rgba(0, 184, 230, 0.08);
+}
+
+/* Sidebar */
+.glass-sidebar {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-right: 1px solid rgba(208, 220, 240, 0.6);
+  box-shadow: 2px 0 20px rgba(10, 20, 60, 0.05);
+}
+
+/* Inputs */
+.glass-input {
+  background: #F3F8FF;
+  border: 1.5px solid #D0DCF0;
+  color: #0A1428;
+  border-radius: 12px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.glass-input::placeholder { color: #4A6080; opacity: 0.6; }
+.glass-input:focus {
+  border-color: #00B8E6;
+  box-shadow: 0 0 0 3px rgba(0, 184, 230, 0.12);
+  outline: none;
+}
+
+/* ── Text glow ────────────────────────────────────── */
+.glow-text-accent { text-shadow: 0 0 12px rgba(0, 184, 230, 0.3); }
+
+/* ── Box shadows ──────────────────────────────────── */
+.shadow-ice-glow { box-shadow: 0 4px 20px rgba(0, 184, 230, 0.15); }
+.shadow-card     { box-shadow: 0 2px 16px rgba(10, 20, 60, 0.07); }
+
+/* ── Nav pill active state ────────────────────────── */
+.nav-pill-active {
+  background: rgba(0, 184, 230, 0.12);
+  color: #00B8E6;
+}
+
+/* ── Wave animation ───────────────────────────────── */
+@keyframes wave-movement {
+  0%   { transform: translateX(0) scaleY(1); }
+  50%  { transform: translateX(-25%) scaleY(0.88); }
+  100% { transform: translateX(-50%) scaleY(1); }
+}
+.animate-wave-slow { animation: wave-movement 15s linear infinite; }
+.animate-wave-fast { animation: wave-movement  9s linear infinite; }
