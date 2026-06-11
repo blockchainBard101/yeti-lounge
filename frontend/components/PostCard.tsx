@@ -830,7 +830,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onLike, onDelete, enok
                   <div key={comment.id} className="bg-bg-primary/30 border border-border-ice/20 rounded-xl p-2.5 text-xs">
                     <div className="flex justify-between items-center text-[10px] text-text-secondary/70 mb-1">
                       <span className="font-bold text-accent">
-                        {comment.authorAddress.slice(0, 6)}…{comment.authorAddress.slice(-4)}
+                        {comment.author?.suinsHandle || (comment.authorAddress ? `${comment.authorAddress.slice(0, 6)}…${comment.authorAddress.slice(-4)}` : "Yeti Member")}
                       </span>
                       <span>
                         {new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

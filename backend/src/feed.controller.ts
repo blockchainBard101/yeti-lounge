@@ -20,7 +20,11 @@ export class FeedController {
       orderBy: { createdAt: 'desc' },
       include: {
         author: true,
-        comments: true,
+        comments: {
+          include: {
+            author: true,
+          },
+        },
       },
     });
 
@@ -84,6 +88,13 @@ export class FeedController {
           ...p.author,
           tipsReceived: p.author.tipsReceived.toString(),
         } : null,
+        comments: p.comments.map((c) => ({
+          ...c,
+          author: c.author ? {
+            ...c.author,
+            tipsReceived: c.author.tipsReceived.toString(),
+          } : null,
+        })),
       };
     });
   }
