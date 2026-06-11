@@ -625,7 +625,7 @@ export const MemeFeed: React.FC = () => {
 
           {/* Multi-image attachment previews */}
           {attachedPreviews.length > 0 && (
-            <div className={`ml-13 grid gap-2 ${
+            <div className={`ml-0 sm:ml-[52px] grid gap-2 ${
               attachedPreviews.length === 1
                 ? "grid-cols-1"
                 : attachedPreviews.length === 2
@@ -664,7 +664,7 @@ export const MemeFeed: React.FC = () => {
             </div>
           )}
           {attachedPreviews.length > 0 && (
-            <div className="ml-13 glass-panel rounded-2xl p-3 border border-border-ice/30 space-y-2">
+            <div className="ml-0 sm:ml-[52px] glass-panel rounded-2xl p-3 border border-border-ice/30 space-y-2">
               <div className="flex justify-between items-center text-xs font-semibold text-text-secondary">
                 <span className="flex items-center gap-1.5 text-accent">
                   <CloudUpload className="h-3.5 w-3.5" />
@@ -691,7 +691,7 @@ export const MemeFeed: React.FC = () => {
           )}
 
           {uploadError && (
-            <p className="text-[9px] text-red-400 ml-13">{uploadError}</p>
+            <p className="text-[9px] text-red-400 ml-0 sm:ml-[52px]">{uploadError}</p>
           )}
 
           <div className="flex justify-between items-center border-t border-border-ice/45 pt-3">
@@ -772,9 +772,9 @@ export const MemeFeed: React.FC = () => {
       </div>
 
       {/* Desktop: 2-col layout. Mobile: single column */}
-      <div className="flex flex-col md:flex-row gap-5 items-start">
+      <div className="flex flex-col md:flex-row gap-5 items-stretch md:items-start w-full">
         {/* Feed stream — takes up 2/3 on desktop */}
-        <div className="flex-1 min-w-0 space-y-4">
+        <div className="flex-1 min-w-0 space-y-4 w-full">
           <AnimatePresence initial={false}>
             {posts
               .filter((post) => {

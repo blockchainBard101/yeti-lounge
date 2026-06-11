@@ -405,7 +405,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onLike, onDelete, enok
   };
 
   const handleShare = () => {
-    const shareUrl = `${window.location.origin}/feed?post=${post.objectId || post.id}`;
+    const shareUrl = `${window.location.origin}/?post=${post.objectId || post.id}`;
     navigator.clipboard.writeText(shareUrl)
       .then(() => {
         setShowShareTooltip(true);

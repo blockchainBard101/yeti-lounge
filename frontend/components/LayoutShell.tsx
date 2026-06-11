@@ -17,8 +17,8 @@ interface LayoutShellProps {
 }
 
 const navItems = [
-  { label: "Home",      href: "/",          icon: Home,      emoji: "🏠" },
-  { label: "Feed",      href: "/feed",       icon: Rss,       emoji: "🏂" },
+  { label: "Feed",      href: "/",          icon: Rss,       emoji: "🏂" },
+  { label: "Lounge",    href: "/lounge",    icon: Home,      emoji: "🏠" },
   { label: "Rewards",   href: "/quests",     icon: BarChart2, emoji: "🏆" },
   { label: "Events",    href: "/events",     icon: Calendar,  emoji: "📅" },
   { label: "Profile",   href: "/profile",    icon: User,      emoji: "👤" },
@@ -26,8 +26,8 @@ const navItems = [
 ];
 
 const pageTitle: Record<string, string> = {
-  "/":          "Home",
-  "/feed":      "Feed",
+  "/":          "Feed",
+  "/lounge":    "Lounge",
   "/quests":    "Rewards",
   "/events":    "Events",
   "/academy":   "Academy",

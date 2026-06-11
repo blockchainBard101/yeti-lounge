@@ -1,14 +1,18 @@
 "use client";
 
-import React, { Suspense } from "react";
-import MemeFeed from "@/components/MemeFeed";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-export default function FeedPage() {
+export default function FeedPageRedirect() {
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/");
+  }, [router]);
+
   return (
-    <div className="space-y-6">
-      <Suspense fallback={<div className="text-center py-10 text-xs text-text-secondary">Thawing feed...</div>}>
-        <MemeFeed />
-      </Suspense>
+    <div className="text-center py-10 text-xs text-text-secondary">
+      Redirecting to lounge feed...
     </div>
   );
 }
