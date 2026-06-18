@@ -70,11 +70,16 @@ export class TxVerifierService {
     const changes = onChainTx.balanceChanges || [];
     const lofiCoinType = this.configService.get<string>('LOFI_COIN_TYPE') || '0x2::sui::SUI';
     
+    this.logger.log(`[TxVerifier] Verifying payment. lofiCoinType: ${lofiCoinType}, treasuryAddress: ${this.treasuryAddress}`);
+    this.logger.log(`[TxVerifier] Balance changes: ${JSON.stringify(changes, null, 2)}`);
+
     const treasuryChange = changes.find((c: any) => {
-      const ownerAddr = c.owner?.AddressOwner || '';
-      return ownerAddr.toLowerCase() === this.treasuryAddress.toLowerCase() &&
-             c.coinType === lofiCoinType &&
-             BigInt(c.amount) > 0n;
+      const ownerAddr = c.address || c.owner?.AddressOwner || '';
+      const isTreasury = ownerAddr.toLowerCase() === this.treasuryAddress.toLowerCase();
+      const isCorrectCoin = c.coinType === lofiCoinType;
+      const isPositive = BigInt(c.amount) > 0n;
+      this.logger.log(`[TxVerifier] Checking change: owner=${ownerAddr}, type=${c.coinType}, amount=${c.amount}. Match criteria: isTreasury=${isTreasury}, isCorrectCoin=${isCorrectCoin}, isPositive=${isPositive}`);
+      return isTreasury && isCorrectCoin && isPositive;
     });
 
     if (!treasuryChange) {

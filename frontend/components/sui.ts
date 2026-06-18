@@ -169,7 +169,12 @@ export async function sponsorAndExecuteTransaction(
         transaction: tx,
         signer: keypair,
       });
-      return { digest: (result as any).digest };
+      const digest = (result as any).digest || 
+                     (result as any).Transaction?.digest || 
+                     (result as any).FailedTransaction?.digest ||
+                     (result as any).transaction?.digest || 
+                     (result as any).transactionBlock?.digest;
+      return { digest };
     }
 
     // Check if the transaction was sponsored locally/mocked
@@ -421,9 +426,9 @@ export async function payLofi(amount: number, enokiFlow: any, senderAddress: str
     }
     
     const [first, ...rest] = coinsList;
-    const primaryCoin = tx.object(first.coinObjectId);
+    const primaryCoin = tx.object(first.coinObjectId || first.objectId);
     if (rest.length > 0) {
-      tx.mergeCoins(primaryCoin, rest.map((c: any) => tx.object(c.coinObjectId)));
+      tx.mergeCoins(primaryCoin, rest.map((c: any) => tx.object(c.coinObjectId || c.objectId)));
     }
     const [splitCoin] = tx.splitCoins(primaryCoin, [amountMist]);
     tx.transferObjects([splitCoin], treasuryAddress);
@@ -435,8 +440,15 @@ export async function payLofi(amount: number, enokiFlow: any, senderAddress: str
     transaction: tx,
     signer: keypair,
   });
+  console.log("[payLofi] Transaction execution result:", result);
+  const digest = (result as any).digest || 
+                 (result as any).Transaction?.digest || 
+                 (result as any).FailedTransaction?.digest ||
+                 (result as any).transaction?.digest || 
+                 (result as any).transactionBlock?.digest;
+  console.log("[payLofi] Extracted digest:", digest);
 
-  return (result as any).digest;
+  return digest;
 }
 
 export async function getAuthToken(enokiFlow: any, address: string): Promise<string> {

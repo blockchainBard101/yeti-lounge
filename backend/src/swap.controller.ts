@@ -114,7 +114,8 @@ export class SwapController {
     const changes = onChainTx.balanceChanges || [];
     const treasuryGain = changes.find(
       (c: any) =>
-        c.owner?.AddressOwner === this.treasuryAddress && BigInt(c.amount) > 0n,
+        ((c.address || c.owner?.AddressOwner || '').toLowerCase() === this.treasuryAddress.toLowerCase()) && 
+        BigInt(c.amount) > 0n,
     );
     if (!treasuryGain) {
       this.logger.warn(

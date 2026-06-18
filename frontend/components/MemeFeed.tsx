@@ -267,6 +267,7 @@ export const MemeFeed: React.FC = () => {
 
   // AI Image generation — payment of 1 LOFI to Lo
   const executeGenerateAiImage = async (txDigest?: string) => {
+    console.log("[MemeFeed] executeGenerateAiImage invoked. txDigest:", txDigest);
     try {
       setTxMessage(txDigest ? "Image paid! Generating lofi meme with AI… 🚀" : "Using daily free credit! Generating lofi meme with AI… 🚀");
       const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -278,6 +279,7 @@ export const MemeFeed: React.FC = () => {
           console.warn("Could not retrieve auth token for AI generate:", authErr);
         }
       }
+      console.log("[MemeFeed] Sending image generation request to backend. prompt:", aiPrompt.trim(), "suiAddress:", address, "txDigest:", txDigest);
       const res = await fetch(`${BACKEND_URL}/ai/generate`, {
         method: "POST",
         headers,
@@ -1013,6 +1015,43 @@ export const MemeFeed: React.FC = () => {
                 >
                   Cancel
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {generatingAiImage && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bg-primary/80 backdrop-blur-md">
+            <div className="absolute h-96 w-96 rounded-full bg-accent/15 blur-3xl pointer-events-none" />
+            <motion.div
+              initial={{ y: 50, opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 50, opacity: 0, scale: 0.95 }}
+              className="relative max-w-sm w-full glass-panel rounded-3xl p-6 md:p-8 text-center space-y-6 bg-surface border-border-ice/60 shadow-[0_0_40px_rgba(0,212,255,0.15)]"
+            >
+              <div className="mx-auto h-20 w-20 rounded-2xl flex items-center justify-center text-4xl shadow-lg bg-accent/10 border border-accent/30 text-accent shadow-ice-glow relative overflow-hidden">
+                <span className="animate-bounce">🎨</span>
+                <div className="absolute inset-0 border-2 border-dashed border-accent rounded-2xl animate-spin" style={{ animationDuration: '6s' }} />
+              </div>
+
+              <div className="space-y-3">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-bold tracking-wider border bg-accent/10 text-accent border-accent/20">
+                  <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+                  <span>GENERATING AI MEME</span>
+                </div>
+                <h3 className="text-lg font-heading font-bold text-text-primary animate-pulse">
+                  Lofi the Yeti is Painting...
+                </h3>
+                <p className="text-xs text-text-secondary leading-relaxed px-4">
+                  Please wait while we authorize your payment and generate your customized lofi artwork. The result will be registered on Walrus storage!
+                </p>
+                {txMessage && (
+                  <div className="mt-4 p-3 rounded-xl bg-surface-secondary border border-border-ice/40 text-[10px] font-mono text-accent break-all">
+                    {txMessage}
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>

@@ -1,14 +1,18 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { verifyPersonalMessageSignature } from '@mysten/sui/verify';
+import { SuiGrpcClient } from '@mysten/sui/grpc';
 import * as crypto from 'crypto';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly tokenSecret: string;
+  private readonly suiClient: SuiGrpcClient;
 
   constructor() {
     this.tokenSecret = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+    const rpcUrl = process.env.SUI_RPC_URL || 'https://fullnode.testnet.sui.io:443';
+    this.suiClient = new SuiGrpcClient({ network: 'testnet', baseUrl: rpcUrl });
   }
 
   async verifyLogin(
@@ -32,7 +36,9 @@ export class AuthService {
 
       // 2. Cryptographically verify signature on-chain/off-chain standard for Sui personal messages
       const messageBytes = new TextEncoder().encode(message);
-      const publicKey = await verifyPersonalMessageSignature(messageBytes, signature);
+      const publicKey = await verifyPersonalMessageSignature(messageBytes, signature, {
+        client: this.suiClient,
+      });
       const derivedAddress = publicKey.toSuiAddress();
 
       if (derivedAddress.toLowerCase() !== suiAddress.toLowerCase()) {

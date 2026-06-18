@@ -133,8 +133,15 @@ export class AiController {
     @Body('txDigest') txDigest?: string,
   ) {
     const suiAddress = req.user.suiAddress || suiAddressOverride;
+    this.logger.log(`[generateImage] Starting image generation. User: ${suiAddress || 'anonymous'}, txDigest: ${txDigest || 'none'}, prompt: "${prompt}"`);
     if (suiAddress) {
-      await this.checkAndConsumeDailyLimit(suiAddress, 'freeImageGensRemaining', txDigest, 1.0, 'ai_generate');
+      try {
+        await this.checkAndConsumeDailyLimit(suiAddress, 'freeImageGensRemaining', txDigest, 1.0, 'ai_generate');
+        this.logger.log(`[generateImage] Limit check/payment consumption verified successfully.`);
+      } catch (limitErr: any) {
+        this.logger.error(`[generateImage] Limit check/payment consumption failed: ${limitErr.message}`);
+        throw limitErr;
+      }
     }
     this.logger.log(`Received image generation prompt: "${prompt}"`);
 
@@ -249,6 +256,7 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
     const customApiUrl = process.env.IMAGE_GEN_API_URL;
 
     this.logger.log(`Using AI provider: ${provider} (OpenAI Model preference: ${openAiModel})`);
+    this.logger.log(`API Key status: OpenAI Key present: ${!!openAiApiKey}, Gemini Key present: ${!!geminiApiKey}, Custom URL present: ${!!customApiUrl}`);
 
     let imageUrl = '';
     let isMock = false;
@@ -258,10 +266,11 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
       if (openAiApiKey) {
         try {
           const modelToUse = openAiModel;
-          this.logger.log(`Attempting OpenAI ${modelToUse} image editing (conditioned generation)...`);
+          this.logger.log(`[OpenAI] Attempting OpenAI ${modelToUse} image editing (conditioned generation)...`);
           const openai = new OpenAI({ apiKey: openAiApiKey });
 
           // Load local character reference files as buffers with Walrus fallback
+          this.logger.log(`[OpenAI] Loading mascot reference images...`);
           const buf1 = await this.loadReferenceImage('yeti-mascot.png');
           const buf2 = await this.loadReferenceImage('yeti-hand-ok-lofi.jpeg');
           const buf3 = await this.loadReferenceImage('yeti-walking-road.jpeg');
@@ -271,6 +280,7 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
             await toFile(buf2, 'yeti-hand-ok-lofi.jpeg', { type: 'image/jpeg' }),
             await toFile(buf3, 'yeti-walking-road.jpeg', { type: 'image/jpeg' }),
           ];
+          this.logger.log(`[OpenAI] Reference images converted to File objects. Calling openai.images.edit...`);
 
           const response = await openai.images.edit({
             model: modelToUse,
@@ -280,21 +290,24 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
             size: '1024x1024',
           });
 
+          this.logger.log(`[OpenAI] Received response from OpenAI API: ${JSON.stringify(response)}`);
           const item = response.data?.[0];
           if (item) {
             if (item.url) {
               imageUrl = item.url;
+              this.logger.log(`[OpenAI] Image URL retrieved: ${imageUrl.slice(0, 60)}...`);
             }
             if (item.b64_json) {
               imageUrl = `data:image/png;base64,${item.b64_json}`;
+              this.logger.log(`[OpenAI] Image B64 JSON retrieved (length: ${item.b64_json.length})`);
             }
           }
         } catch (err: any) {
-          this.logger.error('Failed to generate image via OpenAI SDK:', err);
+          this.logger.error('[OpenAI] Failed to generate image via OpenAI SDK:', err);
           // Automatic fallback to gpt-image-1 if we tried gpt-image-2 and it didn't exist
           if (openAiModel === 'gpt-image-2' && err?.message?.includes('gpt-image-2') && err?.message?.includes('does not exist')) {
             try {
-              this.logger.log('gpt-image-2 not available. Falling back to gpt-image-1...');
+              this.logger.log('[OpenAI-Fallback] gpt-image-2 not available. Falling back to gpt-image-1...');
               const openai = new OpenAI({ apiKey: openAiApiKey });
 
               const buf1 = await this.loadReferenceImage('yeti-mascot.png');
@@ -314,17 +327,21 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
                 n: 1,
                 size: '1024x1024',
               });
+              
+              this.logger.log(`[OpenAI-Fallback] Received fallback response: ${JSON.stringify(response)}`);
               const item = response.data?.[0];
               if (item) {
                 if (item.url) {
                   imageUrl = item.url;
+                  this.logger.log(`[OpenAI-Fallback] Image URL: ${imageUrl.slice(0, 60)}...`);
                 }
                 if (item.b64_json) {
                   imageUrl = `data:image/png;base64,${item.b64_json}`;
+                  this.logger.log(`[OpenAI-Fallback] Image B64 JSON (length: ${item.b64_json.length})`);
                 }
               }
-            } catch (fallbackErr) {
-              this.logger.error('Failed to generate image via OpenAI SDK fallback (gpt-image-1):', fallbackErr);
+            } catch (fallbackErr: any) {
+              this.logger.error('[OpenAI-Fallback] Failed to generate image via OpenAI SDK fallback (gpt-image-1):', fallbackErr);
             }
           }
         }
@@ -336,7 +353,7 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
     // 2. Gemini Integration (only if gemini is explicitly selected, or if provider is not openai and gemini key is present)
     if (!imageUrl && (provider === 'gemini' || (provider !== 'openai' && !openAiApiKey)) && geminiApiKey) {
       try {
-        this.logger.log('Attempting Gemini image generation...');
+        this.logger.log('[Gemini] Attempting Gemini image generation...');
         const ai = new GoogleGenAI({ apiKey: geminiApiKey });
         const response = await ai.models.generateImages({
           model: 'imagen-3.0-generate-002',
@@ -351,14 +368,18 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
         const base64Image = response.generatedImages?.[0]?.image?.imageBytes;
         if (base64Image) {
           imageUrl = `data:image/jpeg;base64,${base64Image}`;
+          this.logger.log(`[Gemini] Image generated successfully (length: ${base64Image.length})`);
+        } else {
+          this.logger.warn(`[Gemini] No image bytes returned. Full response: ${JSON.stringify(response)}`);
         }
-      } catch (err) {
-        this.logger.error('Failed to generate image via GoogleGenAI SDK:', err);
+      } catch (err: any) {
+        this.logger.error('[Gemini] Failed to generate image via GoogleGenAI SDK:', err);
       }
     }
 
     if (!imageUrl && customApiUrl) {
       try {
+        this.logger.log(`[CustomAPI] Querying custom image generation API at: ${customApiUrl}`);
         const res = await fetch(customApiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -366,17 +387,22 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
         });
         if (res.ok) {
           const data = await res.json();
-          if (data.url) imageUrl = data.url;
+          if (data.url) {
+            imageUrl = data.url;
+            this.logger.log(`[CustomAPI] Generated image URL: ${imageUrl}`);
+          }
+        } else {
+          this.logger.error(`[CustomAPI] Custom generation API returned status: ${res.status}`);
         }
-      } catch (err) {
-        this.logger.error('Failed to query custom AI generation API:', err);
+      } catch (err: any) {
+        this.logger.error('[CustomAPI] Failed to query custom AI generation API:', err);
       }
     }
 
     // Fallback reference matching when no AI response was generated
     if (!imageUrl) {
       this.logger.warn(
-        'AI generation key not configured or failed. Falling back to reference matching.',
+        '[Fallback] AI generation key not configured or failed. Falling back to reference matching.',
       );
       const lower = prompt.toLowerCase();
       let file = 'yeti-mascot.png'; // default fallback logo
@@ -412,6 +438,7 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
     // ── UPLOAD GENERATED IMAGE BYTES TO WALRUS Decent Storage ──
     try {
       let base64Data = '';
+      this.logger.log(`[WalrusUpload] Starting image data resolving for: ${imageUrl.slice(0, 60)}...`);
       if (imageUrl.startsWith('data:')) {
         base64Data = imageUrl.split(',')[1];
       } else if (imageUrl.startsWith('/lofi-img/') || imageUrl.startsWith('http')) {
@@ -419,8 +446,10 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
         let buffer: Buffer;
         if (imageUrl.startsWith('/lofi-img/')) {
           const filename = imageUrl.replace('/lofi-img/', '');
+          this.logger.log(`[WalrusUpload] Resolving local reference image: ${filename}`);
           buffer = await this.loadReferenceImage(filename);
         } else {
+          this.logger.log(`[WalrusUpload] Fetching remote image URL: ${imageUrl}`);
           const res = await fetch(imageUrl);
           buffer = Buffer.from(await res.arrayBuffer());
         }
@@ -428,26 +457,29 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
       }
 
       if (base64Data) {
-        this.logger.log(`Registering generated AI image on Walrus storage...`);
+        this.logger.log(`[WalrusUpload] Registering generated AI image on Walrus storage... (base64 length: ${base64Data.length})`);
         const uploadRes = await this.walrusService.registerBlob(
           base64Data,
           CURATOR_ADDRESS,
           20, // default to 20 epochs
         );
 
-        this.logger.log(`Generated image registered on Walrus. Blob ID: ${uploadRes.blobId}`);
+        this.logger.log(`[WalrusUpload] Generated image registered on Walrus. Blob ID: ${uploadRes.blobId}`);
         const aggregatorUrl = `https://aggregator.walrus-testnet.walrus.space/v1/blobs/${uploadRes.blobId}`;
         
         return {
           url: aggregatorUrl,
           blobId: uploadRes.blobId,
         };
+      } else {
+        this.logger.error(`[WalrusUpload] Could not resolve base64 data from URL: ${imageUrl}`);
       }
     } catch (err: any) {
-      this.logger.error(`Failed to register generated image to Walrus: ${err.message || err}`);
+      this.logger.error(`[WalrusUpload] Failed to register generated image to Walrus: ${err.message || err}`, err.stack);
     }
 
     // Fallback in case upload fails
+    this.logger.warn(`[WalrusUpload] Walrus upload failed or skipped, returning fallback URL: ${imageUrl}`);
     return { url: imageUrl };
   }
 
