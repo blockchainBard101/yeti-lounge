@@ -1,10 +1,15 @@
 import {
   Controller,
   Post,
+  Get,
+  Param,
+  Res,
   Body,
   BadRequestException,
 } from '@nestjs/common';
 import { WalrusService } from './walrus.service';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * WalrusController — proxies Walrus blob registration through the sponsor wallet.
@@ -16,6 +21,25 @@ import { WalrusService } from './walrus.service';
 @Controller('walrus')
 export class WalrusController {
   constructor(private readonly walrusService: WalrusService) {}
+
+  @Get('blob/:blobId')
+  async getBlob(
+    @Param('blobId') blobId: string,
+    @Res() res: any,
+  ) {
+    if (!blobId) {
+      throw new BadRequestException('Missing blobId');
+    }
+
+    const localPath = path.resolve(process.cwd(), 'uploads', blobId);
+    if (fs.existsSync(localPath)) {
+      res.setHeader('Content-Type', 'image/jpeg');
+      return fs.createReadStream(localPath).pipe(res);
+    }
+
+    const aggregatorUrl = `https://aggregator.walrus-testnet.walrus.space/v1/blobs/${blobId}`;
+    return res.redirect(aggregatorUrl);
+  }
 
   @Post('register')
   async registerBlob(

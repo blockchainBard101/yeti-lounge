@@ -5,6 +5,8 @@ import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { walrus, TESTNET_WALRUS_PACKAGE_CONFIG, WalrusFile, blobIdFromInt } from '@mysten/walrus';
 import { PrismaService } from './prisma.service';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * WalrusService — backend-side Walrus proxy.
@@ -30,6 +32,20 @@ export class WalrusService {
   private suiClient: SuiGrpcClient;
   private sponsorKeypair: Ed25519Keypair | null = null;
   private walrusClient: ReturnType<typeof this.buildWalrusClient> | null = null;
+
+  private saveMockBlob(blobId: string, base64Bytes: string) {
+    try {
+      const dirPath = path.resolve(process.cwd(), 'uploads');
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+      }
+      const filePath = path.join(dirPath, blobId);
+      fs.writeFileSync(filePath, Buffer.from(base64Bytes, 'base64'));
+      this.logger.log(`Saved mock/cache blob content to disk: ${filePath}`);
+    } catch (err) {
+      this.logger.error(`Failed to save mock/cache blob to disk: ${err.message}`);
+    }
+  }
 
   constructor(
     private configService: ConfigService,
@@ -101,6 +117,9 @@ export class WalrusService {
       const mockBlobId = '0xmock_blob_' + Math.random().toString(36).substring(7);
       const mockBlobObjectId = '0xmock_obj_' + Math.random().toString(36).substring(7);
       const mockTxDigest = '0xmock_tx_' + Math.random().toString(36).substring(7);
+      
+      this.saveMockBlob(mockBlobId, blobBytes);
+
       await this.prisma.walrusBlob.upsert({
         where: { blobId: mockBlobId },
         update: { blobObjectId: mockBlobObjectId, epochs },
@@ -145,6 +164,8 @@ export class WalrusService {
         `[WalrusRegister] Registered. blobObjectId: ${registered.blobObjectId}, tx: ${registered.txDigest}`,
       );
 
+      this.saveMockBlob(registered.blobId, blobBytes);
+
       // Step 3: Upload slivers via the relay (no tokens needed)
       // Pass the registration transaction digest so the upload step has the proper on-chain reference context
       this.logger.log('[WalrusRegister] Uploading slivers...');
@@ -178,6 +199,9 @@ export class WalrusService {
       const mockBlobId = '0xmock_blob_' + Math.random().toString(36).substring(7);
       const mockBlobObjectId = '0xmock_obj_' + Math.random().toString(36).substring(7);
       const mockTxDigest = '0xmock_tx_' + Math.random().toString(36).substring(7);
+      
+      this.saveMockBlob(mockBlobId, blobBytes);
+
       await this.prisma.walrusBlob.upsert({
         where: { blobId: mockBlobId },
         update: { blobObjectId: mockBlobObjectId, epochs },

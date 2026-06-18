@@ -11,6 +11,21 @@ import { OptionalAuthGuard } from './auth/optional-auth.guard';
 
 const CURATOR_ADDRESS = '0x0000000000000000000000000000000000000000000000000000000000000c01';
 
+const ASSET_MAPPINGS: Record<string, string> = {
+  'yeti-mascot.png': 'j9xkr0qHdPJusiM1oGUhxEJkSkJOkkDHTWXPPKFJszo',
+  'lofi-switch.jpeg': 'aN8WoBb7gAm5y5LHGetMiw161OEDcaTW-h_UfGcyZVE',
+  'yeti-hackathon.jpeg': 'V-QllFYi8ZIvCUcxrbgmdM5KaZx14Fp8jLhBEaEmS7Y',
+  'yeti-hand-ok-lofi.jpeg': '9428ETFhA-8V_NMFku2wSueel8zWSnvv2jllmkfIvmQ',
+  'yeti-igloo.jpeg': '8Aeig5z_XXpcq3jXn6I34A0HPJJI50x2oeX4ce3viZQ',
+  'yeti-jetpack.jpeg': 'lsenSK2TOzPcnPflSH4xdCbbDDmSc2qUEADh_nRng-o',
+  'yeti-live-on-sui.jpeg': 'wNSO8n-OyaAIDoX6YB3pfKrg-fgctj7pbw_QL8X15As',
+  'yeti-lofi-study.jpeg': '5QIhJ9NIJq6j0ftYeycJ_uFA8ZLabK8n6AsTRr_hTKQ',
+  'yeti-mainframe.jpeg': 'vG95mguTWBZagHcgSV3nQ0i1gp6D_78j1T4qT1YPfvM',
+  'yeti-stage-presentation.jpeg': 'f7DbaSHZzovA2bCL1sEhKT_sYZ_NfDCQPcw-B8zWZTM',
+  'yeti-sustainable-growth.jpeg': '24jJtt0JTdAxLNk700GGzE9zJaUi2Y7oLQ2mO2O6UxU',
+  'yeti-walking-road.jpeg': 'MDRNzmEKVd-w4FcjJm8I2ti8mxVjNcixIGkLPr4h-WU'
+};
+
 @Controller('ai')
 export class AiController {
   private readonly logger = new Logger(AiController.name);
@@ -21,6 +36,33 @@ export class AiController {
     private readonly prismaService: PrismaService,
     private readonly txVerifierService: TxVerifierService,
   ) {}
+
+  private async loadReferenceImage(filename: string): Promise<Buffer> {
+    const localPath = path.resolve(process.cwd(), '../frontend/public/lofi-img', filename);
+    try {
+      if (fs.existsSync(localPath)) {
+        return fs.readFileSync(localPath);
+      }
+    } catch (err) {
+      this.logger.debug(`Could not read local reference image ${filename} at ${localPath}: ${err.message}`);
+    }
+
+    const blobId = ASSET_MAPPINGS[filename];
+    if (!blobId) {
+      throw new Error(`Reference image "${filename}" is not mapped to a Walrus blob ID.`);
+    }
+
+    const aggregatorUrl = `https://aggregator.walrus-testnet.walrus.space/v1/blobs/${blobId}`;
+    this.logger.log(`Fetching reference image "${filename}" from Walrus: ${aggregatorUrl}`);
+
+    const response = await fetch(aggregatorUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch reference image "${filename}" from Walrus aggregator: ${response.statusText}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  }
 
   private async checkAndConsumeDailyLimit(
     suiAddress: string,
@@ -219,15 +261,15 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
           this.logger.log(`Attempting OpenAI ${modelToUse} image editing (conditioned generation)...`);
           const openai = new OpenAI({ apiKey: openAiApiKey });
 
-          // Load local character reference files as upload streams
-          const imagePath1 = path.resolve(process.cwd(), '../frontend/public/lofi-img/yeti-mascot.png');
-          const imagePath2 = path.resolve(process.cwd(), '../frontend/public/lofi-img/yeti-hand-ok-lofi.jpeg');
-          const imagePath3 = path.resolve(process.cwd(), '../frontend/public/lofi-img/yeti-walking-road.jpeg');
+          // Load local character reference files as buffers with Walrus fallback
+          const buf1 = await this.loadReferenceImage('yeti-mascot.png');
+          const buf2 = await this.loadReferenceImage('yeti-hand-ok-lofi.jpeg');
+          const buf3 = await this.loadReferenceImage('yeti-walking-road.jpeg');
 
           const imageFiles = [
-            await toFile(fs.createReadStream(imagePath1), 'yeti-mascot.png', { type: 'image/png' }),
-            await toFile(fs.createReadStream(imagePath2), 'yeti-hand-ok-lofi.jpeg', { type: 'image/jpeg' }),
-            await toFile(fs.createReadStream(imagePath3), 'yeti-walking-road.jpeg', { type: 'image/jpeg' }),
+            await toFile(buf1, 'yeti-mascot.png', { type: 'image/png' }),
+            await toFile(buf2, 'yeti-hand-ok-lofi.jpeg', { type: 'image/jpeg' }),
+            await toFile(buf3, 'yeti-walking-road.jpeg', { type: 'image/jpeg' }),
           ];
 
           const response = await openai.images.edit({
@@ -255,14 +297,14 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
               this.logger.log('gpt-image-2 not available. Falling back to gpt-image-1...');
               const openai = new OpenAI({ apiKey: openAiApiKey });
 
-              const imagePath1 = path.resolve(process.cwd(), '../frontend/public/lofi-img/yeti-mascot.png');
-              const imagePath2 = path.resolve(process.cwd(), '../frontend/public/lofi-img/yeti-hand-ok-lofi.jpeg');
-              const imagePath3 = path.resolve(process.cwd(), '../frontend/public/lofi-img/yeti-walking-road.jpeg');
+              const buf1 = await this.loadReferenceImage('yeti-mascot.png');
+              const buf2 = await this.loadReferenceImage('yeti-hand-ok-lofi.jpeg');
+              const buf3 = await this.loadReferenceImage('yeti-walking-road.jpeg');
 
               const imageFiles = [
-                await toFile(fs.createReadStream(imagePath1), 'yeti-mascot.png', { type: 'image/png' }),
-                await toFile(fs.createReadStream(imagePath2), 'yeti-hand-ok-lofi.jpeg', { type: 'image/jpeg' }),
-                await toFile(fs.createReadStream(imagePath3), 'yeti-walking-road.jpeg', { type: 'image/jpeg' }),
+                await toFile(buf1, 'yeti-mascot.png', { type: 'image/png' }),
+                await toFile(buf2, 'yeti-hand-ok-lofi.jpeg', { type: 'image/jpeg' }),
+                await toFile(buf3, 'yeti-walking-road.jpeg', { type: 'image/jpeg' }),
               ];
 
               const response = await openai.images.edit({
@@ -376,8 +418,8 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
         // Resolve absolute file path or fetch remote URL, and convert to base64 for Walrus
         let buffer: Buffer;
         if (imageUrl.startsWith('/lofi-img/')) {
-          const filePath = path.resolve(process.cwd(), '../frontend/public', imageUrl.replace(/^\//, ''));
-          buffer = fs.readFileSync(filePath);
+          const filename = imageUrl.replace('/lofi-img/', '');
+          buffer = await this.loadReferenceImage(filename);
         } else {
           const res = await fetch(imageUrl);
           buffer = Buffer.from(await res.arrayBuffer());

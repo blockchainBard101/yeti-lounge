@@ -228,10 +228,6 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onLike, onDelete, enok
       setImages(["/lofi-img/yeti-lofi-study.jpeg", "/lofi-img/yeti-igloo.jpeg"]);
       return;
     }
-    if (post.image.includes("0xmock_blob_")) {
-      setImages(["/lofi-img/yeti-mascot.png"]);
-      return;
-    }
 
     // ── Regular single blob — NO network requests ─────────────────────────────
     setImages([post.image]);

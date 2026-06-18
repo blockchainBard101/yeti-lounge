@@ -51,13 +51,10 @@ export default function ProfilePage() {
 
   const resolveImageUrl = (mediaBlobId?: string | null): string | undefined => {
     if (!mediaBlobId) return undefined;
-    if (mediaBlobId.startsWith("/") || mediaBlobId.startsWith("http")) {
+    if (mediaBlobId.startsWith("/") || mediaBlobId.startsWith("http") || mediaBlobId.startsWith("data:")) {
       return mediaBlobId;
     }
-    if (mediaBlobId.length >= 32) {
-      return `https://aggregator.walrus-testnet.walrus.space/v1/blobs/${mediaBlobId}`;
-    }
-    return `/lofi-img/${mediaBlobId}`;
+    return `${BACKEND_URL}/walrus/blob/${mediaBlobId}`;
   };
 
   const formatTime = (dateString: string) => {

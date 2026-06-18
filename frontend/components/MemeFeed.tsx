@@ -83,8 +83,8 @@ export const MemeFeed: React.FC = () => {
     // Each patch ID gives a direct by-quilt-patch-id URL — no HEAD probes needed
     if (mediaBlobId.startsWith("patches:")) {
       const patchIds = mediaBlobId.slice("patches:".length).split("|");
-      // Return the first patch URL as the canonical preview image
-      return walrusQuiltPatchUrl(patchIds[0]);
+      // Return the first patch URL as the canonical preview image through the proxy
+      return `${BACKEND_URL}/walrus/blob/${patchIds[0]}`;
     }
 
     // Legacy quilt format: "BLOB_ID:N" where N is the number of images
@@ -94,17 +94,7 @@ export const MemeFeed: React.FC = () => {
       return `https://aggregator.walrus-testnet.walrus.space/v1/blobs/by-quilt-id/${quiltBlobId}/image-0`;
     }
 
-    if (mediaBlobId.length >= 32) {
-      return `https://aggregator.walrus-testnet.walrus.space/v1/blobs/${mediaBlobId}`;
-    }
-    
-    // Dynamically resolve mapped asset filenames to real Walrus Testnet blobs
-    const mappedBlobId = (walrusAssets as Record<string, string>)[mediaBlobId];
-    if (mappedBlobId) {
-      return `https://aggregator.walrus-testnet.walrus.space/v1/blobs/${mappedBlobId}`;
-    }
-    
-    return `/lofi-img/${mediaBlobId}`;
+    return `${BACKEND_URL}/walrus/blob/${mediaBlobId}`;
   };
 
   const formatTime = (dateString: string) => {
