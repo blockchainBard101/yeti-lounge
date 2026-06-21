@@ -434,21 +434,9 @@ export async function payLofi(amount: number, enokiFlow: any, senderAddress: str
     tx.transferObjects([splitCoin], treasuryAddress);
   }
 
-  tx.setGasBudget(25_000_000);
-  const keypair = await enokiFlow.getKeypair({ network: "testnet" });
-  const result = await suiClient.signAndExecuteTransaction({
-    transaction: tx,
-    signer: keypair,
-  });
-  console.log("[payLofi] Transaction execution result:", result);
-  const digest = (result as any).digest || 
-                 (result as any).Transaction?.digest || 
-                 (result as any).FailedTransaction?.digest ||
-                 (result as any).transaction?.digest || 
-                 (result as any).transactionBlock?.digest;
-  console.log("[payLofi] Extracted digest:", digest);
-
-  return digest;
+  const execResult = await sponsorAndExecuteTransaction(tx, enokiFlow, senderAddress);
+  console.log("[payLofi] Sponsored execution digest:", execResult.digest);
+  return execResult.digest;
 }
 
 export async function getAuthToken(enokiFlow: any, address: string): Promise<string> {

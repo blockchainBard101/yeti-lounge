@@ -302,7 +302,8 @@ export const MemeFeed: React.FC = () => {
 
       if (data.blobId) {
         setImageBlobId(data.blobId);
-        setAttachedPreviews([data.url]);
+        const previewUrl = data.url.startsWith("/") ? `${BACKEND_URL}${data.url}` : data.url;
+        setAttachedPreviews([previewUrl]);
         setAttachedFiles([]);
         setIsQuilt(false);
       } else {
@@ -354,15 +355,26 @@ export const MemeFeed: React.FC = () => {
 
     try {
       let freeImagesRemaining = 1;
-      const profileRes = await fetch(`${BACKEND_URL}/user/profile?address=${encodeURIComponent(address)}`);
-      if (profileRes.ok) {
-        const profileData = await profileRes.json();
-        if (profileData.dbUser) {
-          freeImagesRemaining = profileData.dbUser.freeImageGensRemaining;
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        const profileRes = await fetch(`${BACKEND_URL}/ai/free-credits?address=${encodeURIComponent(address)}`, {
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (profileRes.ok) {
+          const profileData = await profileRes.json();
+          if (typeof profileData.freeImageGensRemaining === "number") {
+            freeImagesRemaining = profileData.freeImageGensRemaining;
+          }
         }
+      } catch (fetchErr) {
+        console.warn("Failed to fetch free image credits, defaulting to 0 free:", fetchErr);
+        freeImagesRemaining = 0;
       }
 
       if (freeImagesRemaining <= 0) {
+        setGeneratingAiImage(false);
         setShowAiModal(false); // Hide input modal to show confirm payment modal
         setConfirmPaymentConfig({
           isOpen: true,

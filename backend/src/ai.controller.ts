@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Logger, BadRequestException, UseGuards, Req } from '@nestjs/common';
+import { Controller, Post, Body, Logger, BadRequestException, UseGuards, Req, Get, Query } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
 import OpenAI, { toFile } from 'openai';
 import * as fs from 'fs';
@@ -38,7 +38,7 @@ export class AiController {
   ) {}
 
   private async loadReferenceImage(filename: string): Promise<Buffer> {
-    const localPath = path.resolve(process.cwd(), '../frontend/public/lofi-img', filename);
+    const localPath = path.resolve(process.cwd(), 'public/lofi-img', filename);
     try {
       if (fs.existsSync(localPath)) {
         return fs.readFileSync(localPath);
@@ -49,19 +49,30 @@ export class AiController {
 
     const blobId = ASSET_MAPPINGS[filename];
     if (!blobId) {
-      throw new Error(`Reference image "${filename}" is not mapped to a Walrus blob ID.`);
+      return Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+        'base64',
+      );
     }
 
     const aggregatorUrl = `https://aggregator.walrus-testnet.walrus.space/v1/blobs/${blobId}`;
     this.logger.log(`Fetching reference image "${filename}" from Walrus: ${aggregatorUrl}`);
 
-    const response = await fetch(aggregatorUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch reference image "${filename}" from Walrus aggregator: ${response.statusText}`);
+    try {
+      const response = await fetch(aggregatorUrl);
+      if (response.ok) {
+        const arrayBuffer = await response.arrayBuffer();
+        return Buffer.from(arrayBuffer);
+      }
+    } catch (fetchErr) {
+      this.logger.error(`Failed to fetch reference image "${filename}" from Walrus: ${fetchErr.message}`);
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    return Buffer.from(arrayBuffer);
+    // Ultimate transparent 1x1 PNG fallback to prevent crash
+    return Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+      'base64',
+    );
   }
 
   private async checkAndConsumeDailyLimit(
@@ -123,6 +134,39 @@ export class AiController {
     return { freeUsed: false };
   }
 
+  @Get('free-credits')
+  async getFreeCredits(@Query('address') address: string) {
+    if (!address) {
+      throw new BadRequestException('Missing address query parameter');
+    }
+    const todayStr = new Date().toISOString().split('T')[0];
+    let user = await this.prismaService.user.findUnique({
+      where: { suiAddress: address },
+    });
+    if (!user) {
+      user = await this.prismaService.user.create({
+        data: {
+          suiAddress: address,
+          freeChatsRemaining: 5,
+          freeImageGensRemaining: 1,
+          lastUsageDate: todayStr,
+        },
+      });
+    } else if (user.lastUsageDate !== todayStr) {
+      user = await this.prismaService.user.update({
+        where: { suiAddress: address },
+        data: {
+          freeChatsRemaining: 5,
+          freeImageGensRemaining: 1,
+          lastUsageDate: todayStr,
+        },
+      });
+    }
+    return {
+      freeImageGensRemaining: user.freeImageGensRemaining,
+      freeChatsRemaining: user.freeChatsRemaining,
+    };
+  }
 
   @Post('generate')
   @UseGuards(OptionalAuthGuard)
@@ -249,13 +293,14 @@ Maintain mascot consistency while allowing pose, height, clothing, accessories, 
 Output style:
 clean vector illustration, thick black outlines, flat colors, mascot artwork, large centered character framing, high quality.`;
     
+    const isLofiPrompt = prompt.toLowerCase().includes('yeti') || prompt.toLowerCase().includes('lofi');
     const provider = process.env.AI_PROVIDER || 'gemini';
     const geminiApiKey = process.env.GEMINI_API_KEY;
     const openAiApiKey = process.env.OPENAI_API_KEY;
     const openAiModel = process.env.OPENAI_MODEL || 'gpt-image-2';
     const customApiUrl = process.env.IMAGE_GEN_API_URL;
 
-    this.logger.log(`Using AI provider: ${provider} (OpenAI Model preference: ${openAiModel})`);
+    this.logger.log(`Using AI provider: ${provider} (OpenAI Model preference: ${openAiModel}). isLofiPrompt: ${isLofiPrompt}`);
     this.logger.log(`API Key status: OpenAI Key present: ${!!openAiApiKey}, Gemini Key present: ${!!geminiApiKey}, Custom URL present: ${!!customApiUrl}`);
 
     let imageUrl = '';
@@ -265,30 +310,42 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
     if (provider === 'openai') {
       if (openAiApiKey) {
         try {
-          const modelToUse = openAiModel;
-          this.logger.log(`[OpenAI] Attempting OpenAI ${modelToUse} image editing (conditioned generation)...`);
           const openai = new OpenAI({ apiKey: openAiApiKey });
+          let response;
 
-          // Load local character reference files as buffers with Walrus fallback
-          this.logger.log(`[OpenAI] Loading mascot reference images...`);
-          const buf1 = await this.loadReferenceImage('yeti-mascot.png');
-          const buf2 = await this.loadReferenceImage('yeti-hand-ok-lofi.jpeg');
-          const buf3 = await this.loadReferenceImage('yeti-walking-road.jpeg');
+          if (isLofiPrompt) {
+            const modelToUse = openAiModel;
+            this.logger.log(`[OpenAI] Attempting OpenAI ${modelToUse} image editing (conditioned generation)...`);
 
-          const imageFiles = [
-            await toFile(buf1, 'yeti-mascot.png', { type: 'image/png' }),
-            await toFile(buf2, 'yeti-hand-ok-lofi.jpeg', { type: 'image/jpeg' }),
-            await toFile(buf3, 'yeti-walking-road.jpeg', { type: 'image/jpeg' }),
-          ];
-          this.logger.log(`[OpenAI] Reference images converted to File objects. Calling openai.images.edit...`);
+            // Load local character reference files as buffers
+            this.logger.log(`[OpenAI] Loading mascot reference images...`);
+            const buf1 = await this.loadReferenceImage('yeti-mascot.png');
+            const buf2 = await this.loadReferenceImage('yeti-hand-ok-lofi.jpeg');
+            const buf3 = await this.loadReferenceImage('yeti-walking-road.jpeg');
 
-          const response = await openai.images.edit({
-            model: modelToUse,
-            image: imageFiles as any,
-            prompt: fullPrompt,
-            n: 1,
-            size: '1024x1024',
-          });
+            const imageFiles = [
+              await toFile(buf1, 'yeti-mascot.png', { type: 'image/png' }),
+              await toFile(buf2, 'yeti-hand-ok-lofi.jpeg', { type: 'image/jpeg' }),
+              await toFile(buf3, 'yeti-walking-road.jpeg', { type: 'image/jpeg' }),
+            ];
+            this.logger.log(`[OpenAI] Reference images converted to File objects. Calling openai.images.edit...`);
+
+            response = await openai.images.edit({
+              model: modelToUse,
+              image: imageFiles as any,
+              prompt: fullPrompt,
+              n: 1,
+              size: '1024x1024',
+            });
+          } else {
+            this.logger.log(`[OpenAI] Performing standard text-to-image generation for prompt: "${prompt}"`);
+            response = await openai.images.generate({
+              model: openAiModel,
+              prompt: prompt,
+              n: 1,
+              size: '1024x1024',
+            });
+          }
 
           this.logger.log(`[OpenAI] Received response from OpenAI API: ${JSON.stringify(response)}`);
           const item = response.data?.[0];
@@ -305,7 +362,7 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
         } catch (err: any) {
           this.logger.error('[OpenAI] Failed to generate image via OpenAI SDK:', err);
           // Automatic fallback to gpt-image-1 if we tried gpt-image-2 and it didn't exist
-          if (openAiModel === 'gpt-image-2' && err?.message?.includes('gpt-image-2') && err?.message?.includes('does not exist')) {
+          if (isLofiPrompt && openAiModel === 'gpt-image-2' && err?.message?.includes('gpt-image-2') && err?.message?.includes('does not exist')) {
             try {
               this.logger.log('[OpenAI-Fallback] gpt-image-2 not available. Falling back to gpt-image-1...');
               const openai = new OpenAI({ apiKey: openAiApiKey });
@@ -353,11 +410,11 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
     // 2. Gemini Integration (only if gemini is explicitly selected, or if provider is not openai and gemini key is present)
     if (!imageUrl && (provider === 'gemini' || (provider !== 'openai' && !openAiApiKey)) && geminiApiKey) {
       try {
-        this.logger.log('[Gemini] Attempting Gemini image generation...');
+        this.logger.log(`[Gemini] Attempting Gemini image generation. prompt is mascot: ${isLofiPrompt}`);
         const ai = new GoogleGenAI({ apiKey: geminiApiKey });
         const response = await ai.models.generateImages({
           model: 'imagen-3.0-generate-002',
-          prompt: fullPrompt,
+          prompt: isLofiPrompt ? fullPrompt : prompt,
           config: {
             numberOfImages: 1,
             outputMimeType: 'image/jpeg',
@@ -383,7 +440,7 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
         const res = await fetch(customApiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: fullPrompt }),
+          body: JSON.stringify({ prompt: isLofiPrompt ? fullPrompt : prompt }),
         });
         if (res.ok) {
           const data = await res.json();
@@ -464,11 +521,13 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
           20, // default to 20 epochs
         );
 
-        this.logger.log(`[WalrusUpload] Generated image registered on Walrus. Blob ID: ${uploadRes.blobId}`);
-        const aggregatorUrl = `https://aggregator.walrus-testnet.walrus.space/v1/blobs/${uploadRes.blobId}`;
+        this.logger.log(`[WalrusUpload] Generated image registered on Walrus. Blob ID: ${uploadRes.blobId} (Mocked: ${!!uploadRes.mock})`);
+        const finalUrl = uploadRes.mock
+          ? `/walrus/blob/${uploadRes.blobId}`
+          : `https://aggregator.walrus-testnet.walrus.space/v1/blobs/${uploadRes.blobId}`;
         
         return {
-          url: aggregatorUrl,
+          url: finalUrl,
           blobId: uploadRes.blobId,
         };
       } else {
