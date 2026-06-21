@@ -2,12 +2,14 @@ import { Controller, Get, Post, Delete, Param, Query, NotFoundException, Forbidd
 import { PrismaService } from './prisma.service';
 import { WalrusService } from './walrus.service';
 import { AuthGuard } from './auth/auth.guard';
+import { RedisService } from './redis.service';
 
 @Controller('feed')
 export class FeedController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly walrusService: WalrusService,
+    private readonly redisService: RedisService,
   ) {}
 
   @Get()
@@ -15,6 +17,16 @@ export class FeedController {
     @Query('author') authorAddress?: string,
     @Query('includeExpired') includeExpired?: string,
   ) {
+    const cacheKey = `feed:${authorAddress || 'all'}:${includeExpired === 'true'}`;
+    const cachedData = await this.redisService.get(cacheKey);
+    if (cachedData) {
+      try {
+        return JSON.parse(cachedData);
+      } catch (err) {
+        // Fallback to fresh db lookup if JSON is malformed
+      }
+    }
+
     const posts = await this.prisma.post.findMany({
       where: authorAddress ? { authorAddress } : {},
       orderBy: { createdAt: 'desc' },
@@ -77,7 +89,7 @@ export class FeedController {
       return !isExpired;
     });
 
-    return filtered.map((p) => {
+    const result = filtered.map((p) => {
       const { isExpired, expiresAt } = getPostExpiry(p);
       return {
         ...p,
@@ -97,6 +109,9 @@ export class FeedController {
         })),
       };
     });
+
+    await this.redisService.set(cacheKey, JSON.stringify(result), 60); // cache for 60 seconds
+    return result;
   }
 
   private getLookupKeys(mediaBlobId: string): string[] {
@@ -153,6 +168,8 @@ export class FeedController {
       data: { createdAt: new Date() },
     });
 
+    await this.redisService.delPattern('feed:*');
+
     return {
       success: true,
       objectId: updatedPost.objectId,
@@ -179,6 +196,8 @@ export class FeedController {
     }
 
     await this.prisma.post.delete({ where: { objectId } });
+
+    await this.redisService.delPattern('feed:*');
 
     return { success: true, deletedObjectId: objectId };
   }

@@ -113,6 +113,7 @@ export class SponsorService {
 
     const apiKey = this.configService.get<string>('ENOKI_API_KEY');
     try {
+      this.logger.log(`[EnokiSponsor] Requesting Enoki transaction sponsorship for sender: ${sender}`);
       const response = await fetch('https://api.enoki.mystenlabs.com/v1/transaction-blocks/sponsor', {
         method: 'POST',
         headers: {
@@ -136,6 +137,7 @@ export class SponsorService {
       if (!data) {
         throw new Error(`Enoki response missing data object: ${JSON.stringify(json)}`);
       }
+      this.logger.log(`[EnokiSponsor] Successfully sponsored transaction. Digest: ${data.digest}`);
       return {
         bytes: data.bytes || data.transactionBytes,
         digest: data.digest,
@@ -149,6 +151,7 @@ export class SponsorService {
   async executeTransaction(digest: string, signature: string) {
     const apiKey = this.configService.get<string>('ENOKI_API_KEY');
     try {
+      this.logger.log(`[EnokiExecute] Submitting user signature to execute transaction. Digest: ${digest}`);
       const response = await fetch(`https://api.enoki.mystenlabs.com/v1/transaction-blocks/sponsor/${digest}`, {
         method: 'POST',
         headers: {
@@ -170,6 +173,7 @@ export class SponsorService {
       if (!data) {
         throw new Error(`Enoki response missing data object: ${JSON.stringify(json)}`);
       }
+      this.logger.log(`[EnokiExecute] Transaction execution successful. Digest: ${data.digest}`);
       return {
         txDigest: data.digest,
         success: true,

@@ -470,8 +470,25 @@ export async function getAuthToken(enokiFlow: any, address: string): Promise<str
     timestamp: Date.now(),
   };
   const message = JSON.stringify(messageObj);
-  const keypair = await enokiFlow.getKeypair({ network: "testnet" });
-  const { signature } = await keypair.signPersonalMessage(new TextEncoder().encode(message));
+
+  // Wrap Enoki keypair retrieval and signing in a timeout to prevent hanging the app in production
+  // if Enoki background iframe communication (ObjectMultiplex) is blocked or fails.
+  let signature: string;
+  try {
+    const signPromise = (async () => {
+      const keypair = await enokiFlow.getKeypair({ network: "testnet" });
+      const signed = await keypair.signPersonalMessage(new TextEncoder().encode(message));
+      return signed.signature;
+    })();
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Enoki keypair retrieval or signing timed out")), 3000)
+    );
+
+    signature = await Promise.race([signPromise, timeoutPromise]);
+  } catch (err: any) {
+    throw new Error(`Enoki authentication skipped: ${err.message}`);
+  }
 
   const res = await fetch(`${BACKEND_URL}/auth/login`, {
     method: "POST",

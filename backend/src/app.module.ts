@@ -19,6 +19,7 @@ import { LoungeCuratorService } from './lounge-curator.service';
 import { TxVerifierService } from './tx-verifier.service';
 import { ProfileController } from './profile.controller';
 import { AuthModule } from './auth/auth.module';
+import { RedisService } from './redis.service';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { AuthModule } from './auth/auth.module';
     LoungeCuratorService,
     QuestsService,
     TxVerifierService,
+    RedisService,
   ],
 })
 export class AppModule {}

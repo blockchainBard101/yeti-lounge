@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { SuiGraphQLClient } from '@mysten/sui/graphql';
 import { PrismaService } from './prisma.service';
+import { RedisService } from './redis.service';
 
 @Injectable()
 export class IndexerService implements OnModuleInit, OnModuleDestroy {
@@ -13,6 +14,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private configService: ConfigService,
     private prismaService: PrismaService,
+    private redisService: RedisService,
   ) {
     this.graphqlClient = new SuiGraphQLClient({
       network: 'testnet',
@@ -354,6 +356,10 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         // Persist the new cursor so the next run (or restart) picks up from here
         if (newCursor) {
           await this.saveCursor(module, newCursor);
+        }
+
+        if (module === 'post' || module === 'profile') {
+          await this.redisService.delPattern('feed:*');
         }
       }
     } catch (err) {

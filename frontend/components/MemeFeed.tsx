@@ -300,23 +300,30 @@ export const MemeFeed: React.FC = () => {
         throw new Error("Invalid response format from AI generation server.");
       }
 
-      let imageFile: File;
-      if (data.url.startsWith("data:")) {
-        const [meta, b64] = data.url.split(",");
-        const mime = meta.split(":")[1].split(";")[0];
-        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-        imageFile = new File([bytes], "ai-generated.jpg", { type: mime });
+      if (data.blobId) {
+        setImageBlobId(data.blobId);
+        setAttachedPreviews([data.url]);
+        setAttachedFiles([]);
+        setIsQuilt(false);
       } else {
-        const fetched = await fetch(data.url);
-        const blob = await fetched.blob();
-        imageFile = new File([blob], "ai-generated.png", { type: blob.type || "image/png" });
-      }
+        let imageFile: File;
+        if (data.url.startsWith("data:")) {
+          const [meta, b64] = data.url.split(",");
+          const mime = meta.split(":")[1].split(";")[0];
+          const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+          imageFile = new File([bytes], "ai-generated.jpg", { type: mime });
+        } else {
+          const fetched = await fetch(data.url);
+          const blob = await fetched.blob();
+          imageFile = new File([blob], "ai-generated.png", { type: blob.type || "image/png" });
+        }
 
-      const previewUrl = URL.createObjectURL(imageFile);
-      setAttachedFiles([imageFile]);
-      setAttachedPreviews([previewUrl]);
-      setImageBlobId(null);
-      setIsQuilt(false);
+        const previewUrl = URL.createObjectURL(imageFile);
+        setAttachedFiles([imageFile]);
+        setAttachedPreviews([previewUrl]);
+        setImageBlobId(null);
+        setIsQuilt(false);
+      }
 
       setShowAiModal(false);
       setAiPrompt("");
