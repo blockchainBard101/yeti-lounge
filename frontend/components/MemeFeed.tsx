@@ -388,6 +388,8 @@ export const MemeFeed: React.FC = () => {
           if (typeof profileData.freeImageGensRemaining === "number") {
             freeImagesRemaining = profileData.freeImageGensRemaining;
           }
+        } else {
+          freeImagesRemaining = 0;
         }
       } catch (fetchErr) {
         console.warn("Failed to fetch free image credits, defaulting to 0 free:", fetchErr);
