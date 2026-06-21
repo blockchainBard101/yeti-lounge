@@ -9,6 +9,25 @@ import { PrismaService } from './prisma.service';
 import { TxVerifierService } from './tx-verifier.service';
 import { OptionalAuthGuard } from './auth/optional-auth.guard';
 
+function parseBase64Image(base64Str: string): { buffer: Buffer; mimeType: string; extension: string } {
+  const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+  if (matches && matches.length === 3) {
+    const mimeType = matches[1];
+    const data = matches[2];
+    const extension = mimeType.split('/')[1] || 'png';
+    return {
+      buffer: Buffer.from(data, 'base64'),
+      mimeType,
+      extension,
+    };
+  }
+  return {
+    buffer: Buffer.from(base64Str, 'base64'),
+    mimeType: 'image/png',
+    extension: 'png',
+  };
+}
+
 const CURATOR_ADDRESS = '0x0000000000000000000000000000000000000000000000000000000000000c01';
 
 const ASSET_MAPPINGS: Record<string, string> = {
@@ -175,6 +194,7 @@ export class AiController {
     @Body('prompt') prompt: string,
     @Body('suiAddress') suiAddressOverride?: string,
     @Body('txDigest') txDigest?: string,
+    @Body('base64Image') base64Image?: string,
   ) {
     const suiAddress = req.user.suiAddress || suiAddressOverride;
     this.logger.log(`[generateImage] Starting image generation. User: ${suiAddress || 'anonymous'}, txDigest: ${txDigest || 'none'}, prompt: "${prompt}"`);
@@ -312,8 +332,40 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
         try {
           const openai = new OpenAI({ apiKey: openAiApiKey });
           let response;
+          let userImageFile: any = null;
+          if (base64Image) {
+            try {
+              const parsed = parseBase64Image(base64Image);
+              userImageFile = await toFile(parsed.buffer, `reference.${parsed.extension}`, { type: parsed.mimeType });
+              this.logger.log(`[OpenAI] Parsed user reference image buffer (size: ${parsed.buffer.length} bytes)`);
+            } catch (err: any) {
+              this.logger.error('Failed to parse user base64 reference image:', err);
+            }
+          }
 
-          if (isLofiPrompt) {
+          let imageInput: any = null;
+          let promptToUse = prompt;
+
+          if (userImageFile) {
+            if (isLofiPrompt) {
+              this.logger.log(`[OpenAI] User reference image provided AND lofi/yeti prompt detected. Combining user image and mascot reference images...`);
+              const buf1 = await this.loadReferenceImage('yeti-mascot.png');
+              const buf2 = await this.loadReferenceImage('yeti-hand-ok-lofi.jpeg');
+              const buf3 = await this.loadReferenceImage('yeti-walking-road.jpeg');
+
+              const mascotFiles = [
+                await toFile(buf1, 'yeti-mascot.png', { type: 'image/png' }),
+                await toFile(buf2, 'yeti-hand-ok-lofi.jpeg', { type: 'image/jpeg' }),
+                await toFile(buf3, 'yeti-walking-road.jpeg', { type: 'image/jpeg' }),
+              ];
+              imageInput = [userImageFile, ...mascotFiles];
+              promptToUse = fullPrompt;
+            } else {
+              this.logger.log(`[OpenAI] User reference image provided. Using user image as sole reference...`);
+              imageInput = userImageFile;
+              promptToUse = prompt;
+            }
+          } else if (isLofiPrompt) {
             const modelToUse = openAiModel;
             this.logger.log(`[OpenAI] Attempting OpenAI ${modelToUse} image editing (conditioned generation)...`);
 
@@ -328,12 +380,16 @@ clean vector illustration, thick black outlines, flat colors, mascot artwork, la
               await toFile(buf2, 'yeti-hand-ok-lofi.jpeg', { type: 'image/jpeg' }),
               await toFile(buf3, 'yeti-walking-road.jpeg', { type: 'image/jpeg' }),
             ];
-            this.logger.log(`[OpenAI] Reference images converted to File objects. Calling openai.images.edit...`);
+            imageInput = imageFiles;
+            promptToUse = fullPrompt;
+          }
 
+          if (imageInput) {
+            this.logger.log(`[OpenAI] Calling openai.images.edit with image references. prompt: "${promptToUse}"`);
             response = await openai.images.edit({
-              model: modelToUse,
-              image: imageFiles as any,
-              prompt: fullPrompt,
+              model: openAiModel,
+              image: imageInput as any,
+              prompt: promptToUse,
               n: 1,
               size: '1024x1024',
             });

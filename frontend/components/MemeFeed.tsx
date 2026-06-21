@@ -56,6 +56,8 @@ export const MemeFeed: React.FC = () => {
   const [generatingAiImage, setGeneratingAiImage] = useState(false);
   const [aiGenerationError, setAiGenerationError] = useState("");
   const [showTopUpModal, setShowTopUpModal] = useState(false);
+  const [customRefImage, setCustomRefImage] = useState<File | null>(null);
+  const [customRefPreview, setCustomRefPreview] = useState<string>("");
   const [confirmPaymentConfig, setConfirmPaymentConfig] = useState<{
     isOpen: boolean;
     cost: number;
@@ -270,6 +272,19 @@ export const MemeFeed: React.FC = () => {
     console.log("[MemeFeed] executeGenerateAiImage invoked. txDigest:", txDigest);
     try {
       setTxMessage(txDigest ? "Image paid! Generating lofi meme with AI… 🚀" : "Using daily free credit! Generating lofi meme with AI… 🚀");
+      
+      let base64Image: string | undefined = undefined;
+      if (customRefImage) {
+        setTxMessage("Processing reference image… 🖼️");
+        base64Image = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = (err) => reject(err);
+          reader.readAsDataURL(customRefImage);
+        });
+        setTxMessage(txDigest ? "Image paid! Generating lofi meme with AI… 🚀" : "Using daily free credit! Generating lofi meme with AI… 🚀");
+      }
+
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (address) {
         try {
@@ -287,6 +302,7 @@ export const MemeFeed: React.FC = () => {
           prompt: aiPrompt.trim(),
           suiAddress: address,
           txDigest,
+          base64Image,
         }),
       });
 
@@ -328,6 +344,11 @@ export const MemeFeed: React.FC = () => {
 
       setShowAiModal(false);
       setAiPrompt("");
+      if (customRefPreview) {
+        URL.revokeObjectURL(customRefPreview);
+      }
+      setCustomRefImage(null);
+      setCustomRefPreview("");
       setTxMessage("AI image generated successfully and attached! 🏔️");
     } catch (err: any) {
       console.error(err);
@@ -903,6 +924,48 @@ export const MemeFeed: React.FC = () => {
                   maxLength={100}
                   required
                 />
+
+                {/* Optional Reference Image Uploader */}
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-bold text-text-secondary uppercase tracking-wider">
+                    Optional: Reference Image (PNG/JPEG)
+                  </label>
+                  {!customRefPreview ? (
+                    <label className="flex flex-col items-center justify-center w-full h-20 border border-dashed border-border-ice/60 rounded-2xl cursor-pointer bg-surface-secondary/40 hover:bg-surface-secondary/70 transition-all">
+                      <div className="flex flex-col items-center justify-center pt-2 pb-2">
+                        <span className="text-lg">🖼️</span>
+                        <p className="text-[9px] text-text-secondary mt-0.5">Click to upload reference image</p>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setCustomRefImage(file);
+                            setCustomRefPreview(URL.createObjectURL(file));
+                          }
+                        }}
+                      />
+                    </label>
+                  ) : (
+                    <div className="relative w-full h-20 rounded-2xl overflow-hidden border border-border-ice">
+                      <img src={customRefPreview} alt="Reference Preview" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          URL.revokeObjectURL(customRefPreview);
+                          setCustomRefImage(null);
+                          setCustomRefPreview("");
+                        }}
+                        className="absolute top-1 right-1 p-1 rounded-lg bg-bg-primary/80 hover:bg-bg-primary text-text-secondary hover:text-text-primary transition-all"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
                 
                 {aiGenerationError && (
                   <p className="text-[10px] text-red-400 font-medium">{aiGenerationError}</p>
