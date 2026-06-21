@@ -318,7 +318,7 @@ export class SponsorService {
 
     const packageId =
       this.configService.get<string>('PACKAGE_ID') ||
-      '0x395938a222bfd3cf39052bf6ec5b0c8db77935e71a292092dddcbcf1a9ebf2eb';
+      '0x50232b6e065801de6d8d56da5692b7b2aad9b00ebd2cdd026f1da8f0ff4ebbf4';
 
     try {
       const response = await this.graphqlClient.query({

@@ -11,6 +11,23 @@ const nextConfig: NextConfig = {
         hostname: "aggregator.walrus-testnet.walrus.space",
         pathname: "/**",
       },
+      {
+        protocol: "http",
+        hostname: "localhost",
+        port: "4000",
+        pathname: "/**",
+      },
+      {
+        protocol: "http",
+        hostname: "127.0.0.1",
+        port: "4000",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "yeti-lounge-production.up.railway.app",
+        pathname: "/**",
+      },
     ],
   },
 };

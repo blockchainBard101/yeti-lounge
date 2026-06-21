@@ -906,12 +906,10 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onLike, onDelete, enok
               className="relative max-w-4xl w-full h-[70vh] sm:h-[80vh] rounded-3xl overflow-hidden border border-border-ice/60"
               onClick={(e) => e.stopPropagation()}
             >
-              <Image
+              <img
                 src={images[currentImageIndex]}
                 alt="Zoomed media"
-                fill
-                sizes="(max-width: 768px) 100vw, 896px"
-                className="object-contain"
+                className="w-full h-full object-contain"
               />
             </motion.div>
 

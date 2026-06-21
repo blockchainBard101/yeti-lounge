@@ -241,15 +241,15 @@ export async function sponsorAndExecuteTransaction(
 
 export const PACKAGE_ID =
   process.env.NEXT_PUBLIC_PACKAGE_ID ||
-  "0x395938a222bfd3cf39052bf6ec5b0c8db77935e71a292092dddcbcf1a9ebf2eb";
+  "0x50232b6e065801de6d8d56da5692b7b2aad9b00ebd2cdd026f1da8f0ff4ebbf4";
 
 export const REGISTRY_ID =
   process.env.NEXT_PUBLIC_REGISTRY_ID ||
-  "0x66ee02c4394dc8cfe5b9a043afc8d21dbfdb5ae6ed247365c27d78063a7707ac";
+  "0x9b684f80298d07d0d0f49054b43379cc8ebd917c0ccc8dc29d12a0db7d741552";
 
 export const GLACIER_FUND_ID =
   process.env.NEXT_PUBLIC_GLACIER_FUND_ID ||
-  "0x71669ee7a7fb96a3f50984ea406bd1ff52410e1649be661837b57d8471985849";
+  "0x8688f1fb1499a97c6424ed430ea8767af2da4b7cbda27d72dbcf82b780118573";
 
 export const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";

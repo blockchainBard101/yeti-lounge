@@ -18,11 +18,11 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
       network: 'testnet',
       url: 'https://graphql.testnet.sui.io/graphql',
     });
-    this.packageId = this.configService.get<string>('PACKAGE_ID') || '0x395938a222bfd3cf39052bf6ec5b0c8db77935e71a292092dddcbcf1a9ebf2eb';
+    this.packageId = this.configService.get<string>('PACKAGE_ID') || '0x50232b6e065801de6d8d56da5692b7b2aad9b00ebd2cdd026f1da8f0ff4ebbf4';
   }
 
   async onModuleInit() {
-    this.logger.log('Starting Yeti Lounge event indexer...');
+    this.logger.log(`Starting Yeti Lounge event indexer for package: ${this.packageId}...`);
     // Run once immediately on start, then every 10 seconds
     this.indexEvents().catch((err) => this.logger.error('Initial index run failed:', err));
     this.intervalId = setInterval(() => {

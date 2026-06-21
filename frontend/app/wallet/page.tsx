@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Image from "next/image";
 import { Wallet, ArrowDownUp, RefreshCw, Loader2, Coins, ArrowUpRight, TrendingUp, Send, CheckCircle, AlertTriangle } from "lucide-react";
 import { useEnokiFlow, useZkLogin } from "@mysten/enoki/react";
 import { Transaction } from "@mysten/sui/transactions";
@@ -279,25 +280,35 @@ export default function WalletPage() {
           {/* Balance Cards Side-by-Side */}
           <div className="grid grid-cols-2 gap-4">
             {/* SUI Card */}
-            <div className="glass-panel rounded-3xl p-5 relative overflow-hidden group">
-              <div className="absolute top-0 right-0 h-24 w-24 bg-accent/5 rounded-full blur-xl pointer-events-none" />
-              <span className="text-[10px] text-text-secondary uppercase font-bold tracking-wider">Sui Balance</span>
-              <div className="text-xl font-heading font-bold text-text-primary mt-1.5 truncate">
-                {suiBalance} <span className="text-xs text-text-secondary font-sans font-medium">SUI</span>
+            <div className="glass-panel rounded-3xl p-5 relative overflow-hidden group flex justify-between items-start">
+              <div className="space-y-1">
+                <span className="text-[10px] text-text-secondary uppercase font-bold tracking-wider">Sui Balance</span>
+                <div className="text-xl font-heading font-bold text-text-primary mt-1.5 truncate">
+                  {suiBalance} <span className="text-xs text-text-secondary font-sans font-medium">SUI</span>
+                </div>
+                <span className="text-[9px] text-text-secondary/70 mt-3 block">Native gas token</span>
               </div>
-              <span className="text-[9px] text-text-secondary/70 mt-3 block">Native gas token</span>
+              <div className="relative h-10 w-10 shrink-0">
+                <Image src="/Logo_Sui_Droplet_Sui Blue.png" alt="SUI Logo" fill className="object-contain" />
+              </div>
+              <div className="absolute top-0 right-0 h-24 w-24 bg-accent/5 rounded-full blur-xl pointer-events-none" />
             </div>
 
             {/* LOFI Card */}
-            <div className="glass-panel rounded-3xl p-5 relative overflow-hidden group border-mint/20">
-              <div className="absolute top-0 right-0 h-24 w-24 bg-mint/5 rounded-full blur-xl pointer-events-none" />
-              <span className="text-[10px] text-text-secondary uppercase font-bold tracking-wider text-mint">LOFI Balance</span>
-              <div className="text-xl font-heading font-bold text-mint mt-1.5 truncate">
-                {lofiBalance} <span className="text-xs text-text-secondary font-sans font-medium">LOFI</span>
+            <div className="glass-panel rounded-3xl p-5 relative overflow-hidden group border-mint/20 flex justify-between items-start">
+              <div className="space-y-1">
+                <span className="text-[10px] text-text-secondary uppercase font-bold tracking-wider text-mint">LOFI Balance</span>
+                <div className="text-xl font-heading font-bold text-mint mt-1.5 truncate">
+                  {lofiBalance} <span className="text-xs text-text-secondary font-sans font-medium">LOFI</span>
+                </div>
+                <span className="text-[9px] text-mint/70 mt-3 block flex items-center gap-1">
+                  <Coins className="h-3 w-3" /> Lounge community token
+                </span>
               </div>
-              <span className="text-[9px] text-mint/70 mt-3 block flex items-center gap-1">
-                <Coins className="h-3 w-3" /> Lounge community token
-              </span>
+              <div className="relative h-10 w-10 shrink-0">
+                <Image src="/lofi-img/yeti-mascot.png" alt="LOFI Logo" fill className="object-contain" />
+              </div>
+              <div className="absolute top-0 right-0 h-24 w-24 bg-mint/5 rounded-full blur-xl pointer-events-none" />
             </div>
           </div>
 
@@ -346,7 +357,14 @@ export default function WalletPage() {
                       />
                     </div>
                     <div className="px-3 py-1.5 rounded-xl bg-surface border border-border-ice font-bold text-xs flex items-center gap-1.5 select-none text-text-primary">
-                      <span>{fromToken === "SUI" ? "🌊" : "❄️"}</span>
+                      <div className="relative h-4 w-4 shrink-0">
+                        <Image
+                          src={fromToken === "SUI" ? "/Logo_Sui_Droplet_Sui Blue.png" : "/lofi-img/yeti-mascot.png"}
+                          alt={fromToken}
+                          fill
+                          className="object-contain"
+                        />
+                      </div>
                       <span>{fromToken}</span>
                     </div>
                   </div>
@@ -370,7 +388,14 @@ export default function WalletPage() {
                       </div>
                     </div>
                     <div className="px-3 py-1.5 rounded-xl bg-surface border border-border-ice font-bold text-xs flex items-center gap-1.5 select-none text-text-primary">
-                      <span>{toToken === "SUI" ? "🌊" : "❄️"}</span>
+                      <div className="relative h-4 w-4 shrink-0">
+                        <Image
+                          src={toToken === "SUI" ? "/Logo_Sui_Droplet_Sui Blue.png" : "/lofi-img/yeti-mascot.png"}
+                          alt={toToken}
+                          fill
+                          className="object-contain"
+                        />
+                      </div>
                       <span>{toToken}</span>
                     </div>
                   </div>
@@ -472,9 +497,17 @@ export default function WalletPage() {
                       <span className="text-[8px] uppercase tracking-wider text-text-secondary font-bold mb-1">Token</span>
                       <button
                         onClick={() => setShowTokenDropdown(!showTokenDropdown)}
-                        className="bg-surface border border-border-ice rounded-xl px-2 py-1.5 text-xs font-bold text-text-primary cursor-pointer w-full text-center flex items-center justify-center gap-1 select-none hover:bg-surface-secondary transition-all"
+                        className="bg-surface border border-border-ice rounded-xl px-2 py-1.5 text-xs font-bold text-text-primary cursor-pointer w-full text-center flex items-center justify-center gap-1.5 select-none hover:bg-surface-secondary transition-all"
                       >
-                        <span>{sendTokenType} {sendTokenType === "SUI" ? "🌊" : "❄️"}</span>
+                        <div className="relative h-3.5 w-3.5 shrink-0">
+                          <Image
+                            src={sendTokenType === "SUI" ? "/Logo_Sui_Droplet_Sui Blue.png" : "/lofi-img/yeti-mascot.png"}
+                            alt={sendTokenType}
+                            fill
+                            className="object-contain"
+                          />
+                        </div>
+                        <span>{sendTokenType}</span>
                         <span className="text-[9px] text-text-secondary">▼</span>
                       </button>
 
@@ -487,26 +520,32 @@ export default function WalletPage() {
                                 setSendTokenType("SUI");
                                 setShowTokenDropdown(false);
                               }}
-                              className={`w-full py-2 px-3 rounded-lg text-left font-bold transition-all ${
+                              className={`w-full py-2 px-3 rounded-lg text-left font-bold transition-all flex items-center gap-1.5 ${
                                 sendTokenType === "SUI"
                                   ? "bg-accent/12 text-accent"
                                   : "text-text-primary hover:bg-surface-secondary"
                               }`}
                             >
-                              SUI 🌊
+                              <div className="relative h-3.5 w-3.5 shrink-0">
+                                <Image src="/Logo_Sui_Droplet_Sui Blue.png" alt="SUI" fill className="object-contain" />
+                              </div>
+                              <span>SUI</span>
                             </button>
                             <button
                               onClick={() => {
                                 setSendTokenType("LOFI");
                                 setShowTokenDropdown(false);
                               }}
-                              className={`w-full py-2 px-3 rounded-lg text-left font-bold transition-all ${
+                              className={`w-full py-2 px-3 rounded-lg text-left font-bold transition-all flex items-center gap-1.5 ${
                                 sendTokenType === "LOFI"
                                   ? "bg-accent/12 text-accent"
                                   : "text-text-primary hover:bg-surface-secondary"
                               }`}
                             >
-                              LOFI ❄️
+                              <div className="relative h-3.5 w-3.5 shrink-0">
+                                <Image src="/lofi-img/yeti-mascot.png" alt="LOFI" fill className="object-contain" />
+                              </div>
+                              <span>LOFI</span>
                             </button>
                           </div>
                         </>
