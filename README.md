@@ -74,25 +74,25 @@ graph TD
     %% Client Layer Interactions
     Client --> WalletKit
     Client --> zkLogin
-    Client -->| "API Requests & Image Upload" | Nest
+    Client -->|"API Requests & Image Upload"| Nest
 
     %% Proxy Layer Interactions
     Nest --> Sponsor
     Nest --> WalrusService
     Nest --> Indexer
-    Sponsor -->| "Gasless Sponsorship / Subdomains" | SuiNet
-    WalrusService -->| "Pay WAL Storage Fees" | SuiNet
-    WalrusService -->| "Slivers Upload" | WalrusNet
+    Sponsor -->|"Gasless Sponsorship / Subdomains"| SuiNet
+    WalrusService -->|"Pay WAL Storage Fees"| SuiNet
+    WalrusService -->|"Slivers Upload"| WalrusNet
 
     %% Database & Sync Interactions
-    Indexer -->| "Sync events (real-time)" | Postgres
-    Nest -->| "Queries & Caching" | Postgres
-    Nest -->| "Session & State" | Redis
+    Indexer -->|"Sync events (real-time)"| Postgres
+    Nest -->|"Queries & Caching"| Postgres
+    Nest -->|"Session & State"| Redis
 
     %% L1 & Storage Interactions
     SuiNet --> MoveContracts
-    Client -->| "Execute Transactions / Tips" | SuiNet
-    Client -->| "Direct Media Download" | WalrusNet
+    Client -->|"Execute Transactions / Tips"| SuiNet
+    Client -->|"Direct Media Download"| WalrusNet
 ```
 
 
