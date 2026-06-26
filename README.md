@@ -46,29 +46,30 @@ The system consists of three main components:
 
 ```mermaid
 graph TD
-    subgraph Client Layer (Frontend)
+    subgraph ClientLayer ["Client Layer (Frontend)"]
         Client["Next.js / React Web App"]
         WalletKit["Sui dapp-kit / Wallet Adapter"]
         zkLogin["Sui zkLogin (Google OAuth)"]
     end
 
-    subgraph Proxy & API Layer (Backend)
+    subgraph ProxyLayer ["Proxy & API Layer (Backend)"]
         Nest["NestJS API Server"]
         Sponsor["Sponsor Service (Gasless Tx / SuiNS)"]
         WalrusService["Walrus Proxy Service (WAL fee payment)"]
         Indexer["Event Indexer Service"]
     end
 
-    subgraph Database Layer
+    subgraph DbLayer ["Database Layer"]
         Postgres["Postgres DB (Prisma ORM)"]
         Redis["Redis (Temporary Cache)"]
     end
 
-    subgraph Decentralized L1 & Storage
+    subgraph L1Storage ["Decentralized L1 & Storage"]
         SuiNet["Sui Blockchain (Testnet)"]
         MoveContracts["Sui Move Contracts (profile, post, rewards, event, glacier)"]
         WalrusNet["Walrus Storage Node Network"]
     end
+
 
     %% Client Layer Interactions
     Client --> WalletKit
@@ -168,26 +169,6 @@ classDiagram
     QuestRegistry --> Quest : "holds quests"
     YetiEvent --> BadgeNFT : "mints attendance token"
 ```
-
-### 1. `profile.move`
-- Manages user identities via `YetiProfile` objects.
-- Integrates a **Daily Check-In** mechanism with streak multipliers that rewards users in `Flurries` (points).
-- Maintains a global `YetiRegistry` mapping user addresses to their profile objects.
-
-### 2. `post.move`
-- Implements the social loop. Users can publish `MemePost` objects containing a `media_blob_id` pointing to Walrus.
-- Features custom interactions: upvoting, downvoting, liking, commenting, and the signature community reaction **"YERRRR"**.
-- Supports tipping authors directly during the "YERRRR" reaction with any coin type.
-
-### 3. `rewards.move`
-- Gated by an `AdminCap`, this module tracks quests (`Quest`) and rewards users with `Flurries` upon completion.
-
-### 4. `event.move`
-- Allows creators to schedule `YetiEvent` sessions.
-- Users can RSVP on-chain, which mints a non-transferable soulbound `BadgeNFT` commemorating their attendance.
-
-### 5. `glacier.move`
-- A generic donation pool (`GlacierFund<T>`) designed to aggregate charitable contributions (e.g., Lofi Foundation water initiatives) and emit impact tracking events.
 
 ---
 
