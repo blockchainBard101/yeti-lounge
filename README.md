@@ -37,6 +37,54 @@ Built specifically on Sui and inspired by the vibrant LOFI token ecosystem, Yeti
 
 ---
 
+## 🤖 AI Features & Token Economics
+
+Yeti Lounge implements an on-chain AI service loop that balances daily free usage with a token utility sink powered by the `$LOFI` token.
+
+### 🎨 Character-Consistent AI Image Generation
+- Uses **Google Gemini** (`imagen-3.0-generate-002`) or **OpenAI** (`gpt-image-2` / `gpt-image-1`) to produce custom yeti illustrations.
+- Enforces character consistency rules (frog-like sleepy face, blue lips, white fur framing, droopy blue ears, blue hands/feet, flat vector outlines) via prompt conditioning.
+- **Decentralized Storage**: Instead of storing generated assets on centralized servers, the backend uploads raw image bytes to **Walrus Protocol**, returning a certified on-chain aggregator link.
+
+### ❄️ Yeti AI Copilot & MemWal Semantic Memory
+- A friendly, snowboard-loving assistant powered by **Gemini** (`gemini-2.5-flash`) or **OpenAI** (`gpt-4o`).
+- **MemWal Integration**: Connects to decentralized semantic memory on Walrus via the `WalrusMemoryService` to record chat turns, role associations, session histories, and timestamps.
+- **Multi-Agent Debates**: Initiates autonomous creative brainstorm debates (e.g. Chill Yeti vs. Alpha Yeti) to output optimal, high-quality mascot ideas.
+
+### 🪙 LOFI Token Payments & Double-Spend Verification
+Users receive **1 free daily image generation** and **5 free daily chat sessions**. Exceeding these daily limits requires $LOFI token payments:
+- **Image Generation**: `1.0 LOFI`
+- **Yeti Copilot Chat**: `0.1 LOFI`
+- **Multi-Agent Debate**: `2.0 LOFI`
+
+The backend verifies these payments in real-time on-chain before performing any AI compute.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User (Client)
+    participant Backend as NestJS Server
+    participant Verifier as TxVerifierService
+    participant Sui as Sui Blockchain (L1)
+    participant DB as Postgres DB
+
+    User->>Sui: Transfer LOFI to Treasury Address
+    Sui-->>User: Returns Transaction Digest (txDigest)
+    User->>Backend: POST /ai/generate or /ai/chat (with txDigest)
+    Backend->>Verifier: verifyPayment(txDigest, userAddress, costLofi, purpose)
+    Verifier->>DB: Check if txDigest was already used (Double-Spend check)
+    DB-->>Verifier: Digest unused
+    Verifier->>Sui: Get transaction details (balanceChanges)
+    Sui-->>Verifier: Returns tx status & balance changes
+    Verifier->>Verifier: Validate: success=true, recipient=treasury, amount>=costLofi
+    Verifier->>DB: Lock digest in UsedTransactions
+    Verifier-->>Backend: Verification success
+    Note over Backend: Proceed with AI compute / generation
+    Backend-->>User: Returns Generated Image / Response
+```
+
+---
+
 ## 🏗️ Architecture Overview
 
 The system consists of three main components:
