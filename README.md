@@ -204,7 +204,8 @@ The NestJS backend acts as a **Sponsor Guardian** to allow users to interact gas
 
 - **Local Sponsorship**: For specific transactions, the backend reconstructs the transaction from kind bytes, appends the sponsor's gas coins, builds, and signs it.
 - **Enoki Integration**: Connects with Mysten Labs' Enoki service to delegate sponsored execution on-chain.
-- **Welcome Gas Drip**: Implements a `welcomeDrip` utility that grants a one-time 0.05 SUI transfer to new zkLogin addresses to cover independent gas needs (such as local Walrus signatures).
+- **Sponsored Walrus Storage**: Storage node payments and registration fees are fully sponsored and handled on-chain by the backend's funded wallet.
+
 
 ---
 
